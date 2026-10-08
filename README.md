@@ -45,7 +45,8 @@
   <img src="figures/overview_web_latest.png" alt="EvolvingNav overview" width="960" />
 </p>
 
-## Overview
+<a id="overview"></a>
+## 🌍 Overview
 
 Robots often arrive in a world that no longer matches their last observation. A cup can be moved, a door can close, or an object can disappear while the agent is travelling. EvolvingNav treats this gap as a first-class part of navigation: it predicts what the world is likely to look like at arrival time, gathers evidence only when it is informative, and revises its plan when the evidence contradicts memory.
 
@@ -57,7 +58,7 @@ We introduce **EvoWorld-Bench**, a benchmark for persistent navigation in evolvi
   <img src="https://img.shields.io/badge/Physical%20validation-64%20LYNX%20M20%20episodes-7c3aed.svg" alt="64 physical episodes" />
 </p>
 
-## Why EvolvingNav?
+## 🔍 Why EvolvingNav?
 
 Most navigation systems treat an observation as a static fact. EvolvingNav separates three questions that are easy to conflate:
 
@@ -67,7 +68,8 @@ Most navigation systems treat an observation as a static fact. EvolvingNav separ
 
 This separation lets the agent use a stale memory as a calibrated prior rather than as a hard-coded map. The largest gains occur when the environmental change has learnable regularity; under uncertainty, the agent keeps multiple hypotheses and uses route observations to resolve them.
 
-## Key idea
+<a id="key-idea"></a>
+## 💡 Key idea
 
 <table>
   <tr>
@@ -84,7 +86,8 @@ This separation lets the agent use a stale memory as a calibrated prior rather t
 
 The method combines a continuous-time history encoder, a persistence–relocation belief, an arrival-time filter, and a frozen zero-shot vision-language controller. The controller is invoked inside an event-driven loop: action, visibility-qualified observation, belief update, and route revision.
 
-## EvoWorld-Bench
+<a id="evoworld-bench"></a>
+## 🧩 EvoWorld-Bench
 
 EvoWorld-Bench turns human activity traces into executable evolving worlds. It preserves temporal histories, causal observability, controlled mobility regimes, and held-out transfer settings so that an agent cannot solve the task by treating the last observation as permanently true.
 
@@ -103,7 +106,7 @@ EvoWorld-Bench turns human activity traces into executable evolving worlds. It p
   </tr>
 </table>
 
-### Benchmark at a glance
+### 📌 Benchmark at a glance
 
 | Dimension | Coverage |
 | :-- | :-- |
@@ -115,7 +118,8 @@ EvoWorld-Bench turns human activity traces into executable evolving worlds. It p
 
 The benchmark workflow is implemented in [`code/src/evoworld/`](code/src/evoworld/) and includes generation, native Habitat RGB-D histories, public/private audits, evaluation adapters, and release-layout export.
 
-## Results
+<a id="results"></a>
+## 📊 Results
 
 On EvoWorld-Bench, EvolvingNav improves both the first destination chosen from stale memory and recovery within a search budget. Values below are reported as mean ± standard deviation across five seeds.
 
@@ -131,7 +135,7 @@ On EvoWorld-Bench, EvolvingNav improves both the first destination chosen from s
 
 <p align="center"><sub>Qualitative behavior: arrival-time prediction proposes plausible destinations, while informative observations suppress stale hypotheses and trigger recovery.</sub></p>
 
-### Component analysis
+### 🧪 Component analysis
 
 <p align="center">
   <img src="figures/ablation_web_latest.png" alt="EvolvingNav component ablation" width="960" />
@@ -139,30 +143,41 @@ On EvoWorld-Bench, EvolvingNav improves both the first destination chosen from s
 
 The ablation isolates the contribution of predictive belief, transition modeling, visibility-aware evidence, and event-driven replanning. Removing these components weakens either the initial inspection decision or the ability to recover after a world change.
 
-## Real-world validation
+## 🤖 Real-world validation
 
-We evaluate the same persistent-navigation loop on **64 matched LYNX M20 search episodes**. Across indoor and outdoor scenes, the robot reaches **34.4% First-Inspection SR**, **48.4% Search SR**, and **24.3% Recovery SR**, with **43.8 m mean travel**.
+We evaluate the same persistent-navigation loop on **64 matched LYNX M20 search episodes**. Across indoor and outdoor scenes, the robot reaches **34.4% First-Inspection SR**, **48.4% Search SR**, and **24.3% Recovery SR**, with **43.8 m mean travel**. LYNX M20 is the primary quantitative platform; LYNX X30 and Lite3 provide matched transfer subsets with the same task protocol and perception interface.
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <p align="center"><b>Indoor execution</b></p>
-      <a href="figures/Real_World_Case_third_2.pdf"><img src="figures/real_indoor_sequence_web.png" alt="Indoor LYNX M20 navigation sequence" width="100%" /></a>
-      <p><sub>The robot verifies a remembered route, gathers new evidence, and locates a relocated object.</sub></p>
-    </td>
-    <td width="50%" valign="top">
-      <p align="center"><b>Outdoor recovery</b></p>
-      <a href="figures/Real_World_Case_third_1.pdf"><img src="figures/real_outdoor_sequence_web.png" alt="Outdoor LYNX M20 navigation sequence" width="100%" /></a>
-      <p><sub>The robot rejects a stale parking hypothesis and searches a predicted current location.</sub></p>
-    </td>
-  </tr>
-</table>
+<p align="center"><b>Figure 14 · Indoor cup search</b></p>
+<p align="center">
+  <a href="figures/Real_World_Case_third_3.pdf"><img src="figures/real_indoor_comparison_web.png" alt="Indoor cup search comparing stale last-seen memory with predictive belief" width="900" /></a>
+</p>
+<p align="center"><sub>Predictive belief reaches the cup after it moves, while the last-seen policy revisits a stale location.</sub></p>
 
-## Demonstrations
+<p align="center"><b>Figure 10 · Outdoor car search</b></p>
+<p align="center">
+  <a href="figures/Real_World_Case_third_1.pdf"><img src="figures/real_outdoor_sequence_web.png" alt="Outdoor car search comparing stale last-seen memory with predictive belief" width="900" /></a>
+</p>
+<p align="center"><sub>The robot rejects the previous parking spot and searches for the car at its predicted current location.</sub></p>
+
+### 🧭 Extended real-world executions
+
+The paper also reports two longer-horizon executions that test system-level orchestration beyond the quantitative predictive-search protocol.
+
+<p align="center">
+  <a href="figures/Real_World_Case_1.pdf"><img src="figures/real_indoor_delivery_web.png" alt="Figure 15: Long-horizon indoor document-delivery execution" width="960" /></a>
+</p>
+<p align="center"><sub><b>Figure 15 · Indoor document delivery.</b> The robot navigates to an office, verifies a person, collects documents with human assistance, and delivers them to a meeting room.</sub></p>
+
+<p align="center">
+  <a href="figures/Real_World_Case_2.pdf"><img src="figures/real_outdoor_bikes_web.png" alt="Figure 16: Long-horizon outdoor shared-bike search" width="960" /></a>
+</p>
+<p align="center"><sub><b>Figure 16 · Outdoor shared-bike search.</b> The robot detects a blocked preferred route, replans through a detour, and finds the shared bikes.</sub></p>
+
+## 🎥 Demonstrations
 
 The [project page](https://zju4embodiedai.github.io/EvolvingNav/) contains four HSSD videos plus HM3D and Habitat-GS demonstrations, an interactive HSSD belief explorer, benchmark figures, and the full paper narrative. An interactive lightweight demo is also available on [Hugging Face](https://huggingface.co/spaces/ZJU4EmbodiedAI/EvolvingNav).
 
-## Repository layout
+## 🗂️ Repository layout
 
 ```text
 .
@@ -178,7 +193,8 @@ The [project page](https://zju4embodiedai.github.io/EvolvingNav/) contains four 
     └── tests/                 # Agent and benchmark contract tests
 ```
 
-## Getting started
+<a id="getting-started"></a>
+## 🛠️ Getting started
 
 The runnable implementation lives in [`code/`](code/README.md). It targets **Python 3.11** and **Habitat-Sim 0.3.3**.
 
@@ -196,7 +212,7 @@ python -m pytest tests -q
 
 For dataset paths, RGB-D assets, model checkpoints, calibration, training, and N1–N5 execution commands, see the detailed [code README](code/README.md). The source tree keeps generated datasets, run logs, checkpoints, and credentials outside version control.
 
-## Citation
+## 📖 Citation
 
 If EvolvingNav is useful for your research, please cite:
 
@@ -209,7 +225,7 @@ If EvolvingNav is useful for your research, please cite:
 }
 ```
 
-## Links
+## 🔗 Links
 
 - **Paper:** [arXiv:2609.39166](https://arxiv.org/pdf/2609.39166)
 - **Project page:** [zju4embodiedai.github.io/EvolvingNav](https://zju4embodiedai.github.io/EvolvingNav/)
