@@ -9,12 +9,12 @@ from pathlib import Path
 
 import numpy as np
 
-from evolvingnav_paper.backend import HabitatInspectionBackend
-from evolvingnav_paper.coverage import (
+from evolvingnav.backend import HabitatInspectionBackend
+from evolvingnav.coverage import (
     candidate_surface_samples, visible_sample_ids, view_features,
 )
-from evolvingnav_paper.perception import GroundedSAMInspector
-from evolvingnav_paper.run import rows
+from evolvingnav.perception import GroundedSAMInspector
+from evolvingnav.run import rows
 
 
 def main() -> int:

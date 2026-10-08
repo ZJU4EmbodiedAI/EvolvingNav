@@ -9,14 +9,14 @@ import io
 import math
 from PIL import Image
 
-from evolvingnav_paper.agent import ViewEvidence
-from evolvingnav_paper.coverage import (
+from evolvingnav.agent import ViewEvidence
+from evolvingnav.coverage import (
     camera_transform, candidate_surface_samples,
     heading_quaternion,
     visible_sample_ids, view_features,
 )
-from evolvingnav_paper.habitat_utils import set_agent
-from evolvingnav_paper.memory import backproject
+from evolvingnav.habitat_utils import set_agent
+from evolvingnav.memory import backproject
 
 
 class HabitatAgentWorld:
@@ -86,7 +86,7 @@ class HabitatAgentWorld:
         return self.calibrator.predict(features)
 
     def plan_view(self, state: int, covered: frozenset[int], *, round_id: int = 0):
-        from evolvingnav_paper.coverage import _rotation
+        from evolvingnav.coverage import _rotation
         options = []
         used = self.used_views.setdefault((state, round_id), set())
         for index, viewpoint in enumerate([self.viewpoints[state], *self.viewpoints[state].get("alternatives", [])]):

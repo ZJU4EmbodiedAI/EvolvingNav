@@ -8,9 +8,9 @@ from pathlib import Path
 
 import numpy as np
 
-from evolvingnav_paper.backend import HabitatInspectionBackend
-from evolvingnav_paper.habitat_utils import set_agent
-from evolvingnav_paper.run import rows
+from evolvingnav.backend import HabitatInspectionBackend
+from evolvingnav.habitat_utils import set_agent
+from evolvingnav.run import rows
 
 
 def arguments(argv: list[str] | None = None) -> argparse.Namespace:

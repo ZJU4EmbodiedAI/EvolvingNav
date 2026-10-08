@@ -46,15 +46,15 @@ def main():
         raise ValueError('positive episode quota and new output directory required')
     load_agent_package(args.agent_root)
     import numpy as np
-    from evolvingnav_paper.agent import Agent, AgentConfig
-    from evolvingnav_paper.calibration import DetectionCalibrator
-    from evolvingnav_paper.evaluate import score_agent, aggregate_metrics, oracle_distance
-    from evolvingnav_paper.memory import VersionedMemory
-    from evolvingnav_paper.perception import GroundedSAMInspector
-    from evolvingnav_paper.policy import load_belief, predict_public, model_input_batch
-    from evolvingnav_paper.transition import IdentityTransition
-    from evolvingnav_paper.transition_model import NeuralTransition, TransitionHead
-    from evolvingnav_paper.world import HabitatAgentWorld
+    from evolvingnav.agent import Agent, AgentConfig
+    from evolvingnav.calibration import DetectionCalibrator
+    from evolvingnav.evaluate import score_agent, aggregate_metrics, oracle_distance
+    from evolvingnav.memory import VersionedMemory
+    from evolvingnav.perception import GroundedSAMInspector
+    from evolvingnav.policy import load_belief, predict_public, model_input_batch
+    from evolvingnav.transition import IdentityTransition
+    from evolvingnav.transition_model import NeuralTransition, TransitionHead
+    from evolvingnav.world import HabitatAgentWorld
 
     public_selection = select_public_episodes(read_jsonl(args.dataset/'episodes'/f'{args.split}.jsonl'),
                                              args.tasks,args.limit_per_task)
@@ -95,7 +95,7 @@ def main():
             'N4 forecasting is frozen without a transition checkpoint',
             'cross-split RGB-D frame reuse remains a construction audit gap; do not report formal scores until resolved'],
         'agent_files_sha256': {str(p.relative_to(args.agent_root)): digest(p)
-            for p in sorted((args.agent_root/'evolvingnav_paper').glob('*.py'))}}
+            for p in sorted((args.agent_root/'evolvingnav').glob('*.py'))}}
     (args.output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     calibrator = DetectionCalibrator.load(args.calibration)
     inspector = GroundedSAMInspector(args.agent_root/'configs/perception.yaml',

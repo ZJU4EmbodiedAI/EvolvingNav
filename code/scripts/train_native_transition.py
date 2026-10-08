@@ -35,8 +35,8 @@ def main():
     import numpy as np
     import torch
     from torch.utils.data import DataLoader
-    from evolvingnav_paper.policy import load_belief, model_input_batch
-    from evolvingnav_paper.transition_model import TransitionHead
+    from evolvingnav.policy import load_belief, model_input_batch
+    from evolvingnav.transition_model import TransitionHead
     from train_transition import epoch
     random.seed(args.seed);np.random.seed(args.seed);torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)

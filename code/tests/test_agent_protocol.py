@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-from evolvingnav_paper.agent import Agent, AgentConfig, AgentResult, ViewEvidence
-from evolvingnav_paper.calibration import DetectionCalibrator
-from evolvingnav_paper.coverage import camera_transform, visible_sample_ids
-from evolvingnav_paper.filter import EvidenceLedger
-from evolvingnav_paper.memory import VersionedMemory, backproject
-from evolvingnav_paper.transition import IdentityTransition
+from evolvingnav.agent import Agent, AgentConfig, AgentResult, ViewEvidence
+from evolvingnav.calibration import DetectionCalibrator
+from evolvingnav.coverage import camera_transform, visible_sample_ids
+from evolvingnav.filter import EvidenceLedger
+from evolvingnav.memory import VersionedMemory, backproject
+from evolvingnav.transition import IdentityTransition
 
 
 class RouteWorld:
@@ -111,7 +111,7 @@ def test_enroute_coverage_counts_as_first_inspection():
 
 
 def test_enroute_negative_starts_no_new_round_at_same_decision_time():
-    from evolvingnav_paper.transition import MatrixTransition
+    from evolvingnav.transition import MatrixTransition
     agent = Agent({1: .8, 2: .2}, {1: 1., 2: 2.}, RouteWorld(),
                   MatrixTransition(np.eye(2)), sample_count={1: 10})
     agent._admit_negative([ViewEvidence('enroute', 1, frozenset(range(8)), .8, .8)],
@@ -173,7 +173,7 @@ def test_temporal_memory_query_selects_matching_entity_version():
 
 
 def test_unseen_public_instance_uses_semantics_without_known_identity():
-    from evolvingnav_paper.policy import model_input_batch
+    from evolvingnav.policy import model_input_batch
     arrays = {'event_type': np.array([[1]]), 'history_mask': np.array([[True]]),
               'observed_state_id': np.array([[1]]), 'candidate_state_ids': np.array([[1, 2]]),
               'candidate_mask': np.array([[True, True]]), 'instance_uuid': np.array(['new'])}
@@ -182,7 +182,7 @@ def test_unseen_public_instance_uses_semantics_without_known_identity():
 
 
 def test_n5_cli_selects_underlying_protocol():
-    from evolvingnav_paper.run import arguments
+    from evolvingnav.run import arguments
     args = arguments(['--task', 'n5', '--protocol', 'n3', '--dataset', '/dataset',
                       '--tasks', '/tasks', '--checkpoint', '/model.pt', '--hssd-root', '/hssd',
                       '--navmesh-root', '/nav', '--output', '/out'])
@@ -190,7 +190,7 @@ def test_n5_cli_selects_underlying_protocol():
 
 
 def test_runner_uses_public_scene_geometry_and_all_episode_budgets():
-    from evolvingnav_paper.run import public_features, episode_config
+    from evolvingnav.run import public_features, episode_config
     schema = {'region_category_to_id': {'room': 0, 'unknown': 1},
               'receptacle_category_to_id': {'table': 0, 'unknown': 1}}
     states = [{'state_id': 0, 'region_category': 'room', 'receptacle_category': 'table',
@@ -206,8 +206,8 @@ def test_runner_uses_public_scene_geometry_and_all_episode_budgets():
     assert (config.protocol, config.max_time_s, config.max_steps, config.max_explorations) == ('n2', 7., 21, 2)
 
 
-def test_runner_rejects_nonpaper_success_contract():
-    from evolvingnav_paper.run import validate_episode_contract
+def test_runner_rejects_nonbenchmark_success_contract():
+    from evolvingnav.run import validate_episode_contract
     episode = {'success_spec': {'max_geodesic_distance_m': 1., 'min_visible_fraction': .05,
                                 'require_target_visible': True, 'require_stop_action': True},
                'episode_budget': {'max_steps': 500, 'max_path_length_m': 100.,
@@ -221,7 +221,7 @@ def test_runner_rejects_nonpaper_success_contract():
 
 
 def test_new_scene_semantic_labels_use_unknown_vocab_not_new_weights():
-    from evolvingnav_paper.run import public_features
+    from evolvingnav.run import public_features
     states = [{'state_id': 0, 'region_category': 'garage', 'receptacle_category': 'new_shelf',
                'state_center': [1., 2., 3.]}]
     schema = {'region_category_to_id': {'unknown': 2},
@@ -260,7 +260,7 @@ def test_exploration_utility_uses_current_frontier_cost():
 
 
 def test_controller_executes_memory_tool_before_selecting_action():
-    from evolvingnav_paper.controller import LunaToolController
+    from evolvingnav.controller import LunaToolController
     responses = iter([
         {'output': [{'type': 'function_call', 'call_id': 'memory-1', 'name': 'query_memory',
                      'arguments': '{"filters":{"entity_id":"cup"}}'}]},
@@ -295,7 +295,7 @@ def test_mask_grounding_materializes_causal_entity_memory():
 
 
 def test_dynamic_metrics_use_predeclared_subset_and_verification_time():
-    from evolvingnav_paper.evaluate import aggregate_metrics
+    from evolvingnav.evaluate import aggregate_metrics
     rows = [
         {'success': True, 'spl': .8, 'first_inspection_success': True,
          'recovery_eligible': False, 'recovered': False, 'dynamic_eligible': True,
@@ -314,7 +314,7 @@ def test_dynamic_metrics_use_predeclared_subset_and_verification_time():
 
 
 def test_dynamic_oracle_waits_without_changing_preselected_window():
-    from evolvingnav_paper.evaluate import oracle_distance
+    from evolvingnav.evaluate import oracle_distance
     phases = [(0., [3.]), (4., [0.])]
     distance = oracle_distance(start=0., phases=phases, distance=lambda a, b: abs(a-b),
                                max_time_s=10., max_path_m=10., inspection_s=1.)
@@ -323,7 +323,7 @@ def test_dynamic_oracle_waits_without_changing_preselected_window():
 
 def test_live_world_returns_positive_chunk_and_registers_frame():
     from types import SimpleNamespace
-    from evolvingnav_paper.world import HabitatAgentWorld
+    from evolvingnav.world import HabitatAgentWorld
     mask = np.zeros((100, 100), dtype=bool)
     mask[45:55, 45:55] = True
     detection = SimpleNamespace(category='mug', confidence=.9, mask=mask)
@@ -349,7 +349,7 @@ def test_live_world_returns_positive_chunk_and_registers_frame():
 
 def test_multiview_plan_offers_remaining_surface_after_weak_view():
     from types import SimpleNamespace
-    from evolvingnav_paper.world import HabitatAgentWorld
+    from evolvingnav.world import HabitatAgentWorld
     viewpoints = {1: {'position_xyz': [0, 0, 0], 'rotation_xyzw': [0, 0, 0, 1],
                       'alternatives': [{'position_xyz': [1, 0, 0], 'rotation_xyzw': [0, 0, 0, 1]}]}}
     backend = SimpleNamespace(distance=lambda start, end: float(np.linalg.norm(np.asarray(end)-start)))
@@ -360,7 +360,7 @@ def test_multiview_plan_offers_remaining_surface_after_weak_view():
 
 
 def test_weak_view_uses_an_alternative_before_repeating_same_pose():
-    from evolvingnav_paper.world import HabitatAgentWorld
+    from evolvingnav.world import HabitatAgentWorld
     viewpoints = {1: {'position_xyz': [0, 0, 0], 'rotation_xyzw': [0, 0, 0, 1],
                       'alternatives': [{'position_xyz': [1, 0, 0], 'rotation_xyzw': [0, 0, 0, 1]}]}}
     class Backend:
@@ -383,7 +383,7 @@ def test_weak_view_uses_an_alternative_before_repeating_same_pose():
 
 def test_transition_subset_conserves_mass_and_advances_calendar():
     import torch
-    from evolvingnav_paper.transition_model import NeuralTransition, TransitionHead
+    from evolvingnav.transition_model import NeuralTransition, TransitionHead
     class Backbone(torch.nn.Module):
         def __init__(self):
             super().__init__()
@@ -432,7 +432,7 @@ def test_shared_encoder_accepts_new_scene_public_geometry():
 
 
 def test_early_dynamic_stop_stays_in_online_recovery_denominator():
-    from evolvingnav_paper.evaluate import score_agent
+    from evolvingnav.evaluate import score_agent
     result = AgentResult(found=True, actions=['STOP'], path_m=3., elapsed_s=2.)
     result.covered_inspections = [{'state_id': 1, 'round': 0, 'time_s': 1., 'evidence_id': 'f'}]
     frames = [{'state_id': 1, 'time_s': 1., 'true_state_id': 1},

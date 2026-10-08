@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from evolvingnav_paper.policy import candidate_utility, pack_public_query, predict_public, rank_candidates
-from evolvingnav_paper.evaluate import evaluate_search
-from evolvingnav_paper.backend import visible_fraction_from_masks
+from evolvingnav.policy import candidate_utility, pack_public_query, predict_public, rank_candidates
+from evolvingnav.evaluate import evaluate_search
+from evolvingnav.backend import visible_fraction_from_masks
 
 
 def test_public_packing_never_exposes_labels_or_world_metadata() -> None:
@@ -100,7 +100,7 @@ def test_model_receives_last_state_derived_from_public_history() -> None:
 
 
 def test_transition_model_batch_contains_no_evaluator_fields() -> None:
-    from evolvingnav_paper.policy import model_input_batch
+    from evolvingnav.policy import model_input_batch
 
     arrays = {
         "event_type": np.array([[1]], dtype=np.int8),
@@ -214,7 +214,7 @@ def test_verified_instance_at_neighbor_state_viewpoint_can_succeed() -> None:
     assert result["success"] is True
 
 
-def test_paper_success_requires_twenty_percent_visibility() -> None:
+def test_success_requires_twenty_percent_visibility() -> None:
     episode = {
         "base_episode_id": "ep", "episode_budget": {
             "max_candidate_inspections": 1, "max_path_length_m": 10.0,
@@ -240,7 +240,7 @@ def test_visible_fraction_uses_target_only_projection_as_denominator() -> None:
 
 
 def test_grounded_sam_policy_detection_uses_rgb_depth_and_category_only() -> None:
-    from evolvingnav_paper.perception import detect_category
+    from evolvingnav.perception import detect_category
 
     def detector(rgb, categories):
         assert rgb.shape == (2, 2, 3)
@@ -258,7 +258,7 @@ def test_grounded_sam_policy_detection_uses_rgb_depth_and_category_only() -> Non
 
 
 def test_grounded_sam_returns_mask_for_rgbd_memory_backprojection() -> None:
-    from evolvingnav_paper.perception import detect_instances
+    from evolvingnav.perception import detect_instances
 
     found = detect_instances(
         lambda _rgb, _categories: (("bottle", 0.9, (0., 0., 1., 1.)),),
@@ -271,7 +271,7 @@ def test_grounded_sam_returns_mask_for_rgbd_memory_backprojection() -> None:
 
 
 def test_grounded_sam_requires_a_nonempty_target_category_mask() -> None:
-    from evolvingnav_paper.perception import detect_category
+    from evolvingnav.perception import detect_category
 
     rgb = np.zeros((2, 2, 3), dtype=np.uint8)
     def detector(_rgb, _categories):
@@ -285,7 +285,7 @@ def test_grounded_sam_requires_a_nonempty_target_category_mask() -> None:
     assert detect_category(detector, empty_mask, rgb, "bottle") is False
 
 
-def test_training_cli_exposes_paper_optimizer_parameters(monkeypatch) -> None:
+def test_training_cli_exposes_optimizer_parameters(monkeypatch) -> None:
     import sys
     from train_p4d_belief import arguments
 
@@ -298,7 +298,7 @@ def test_training_cli_exposes_paper_optimizer_parameters(monkeypatch) -> None:
     assert args.gradient_clip == 1.0
 
 
-def test_training_cli_defaults_match_paper_configuration(monkeypatch) -> None:
+def test_training_cli_defaults_match_benchmark_configuration(monkeypatch) -> None:
     import sys
     from train_p4d_belief import arguments
 
@@ -315,7 +315,7 @@ def test_training_cli_defaults_match_paper_configuration(monkeypatch) -> None:
     assert args.use_compatibility is True
 
 
-def test_paper_compatibility_head_receives_state_loss_gradient() -> None:
+def test_compatibility_head_receives_state_loss_gradient() -> None:
     import torch
 
     from readyagent.p4d_belief.data import Catalog

@@ -1,8 +1,8 @@
 """Small, reproducible Habitat diagnostic rollout for native episodes.
 
-This runner intentionally reports no paper score.  It produces an agent-facing
-RGB-D trace plus evaluator-only semantic diagnostics, which can be consumed by
-a later private evaluator after the visibility fraction is calibrated.
+This runner writes an agent-facing trace and evaluator diagnostics.  It produces an agent-facing
+ RGB-D trace plus evaluator-only semantic diagnostics, which are consumed by
+a later private evaluator after visibility calibration.
 """
 from __future__ import annotations
 

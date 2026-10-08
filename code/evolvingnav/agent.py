@@ -1,4 +1,4 @@
-"""Event-driven EvolvingNav controller (paper Equations 11–15, 20–22)."""
+"""Event-driven EvolvingNav controller (event-driven equations 11–15, 20–22)."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from evolvingnav_paper.filter import BeliefFilter, EvidenceLedger
-from evolvingnav_paper.policy import candidate_utility
+from evolvingnav.filter import BeliefFilter, EvidenceLedger
+from evolvingnav.policy import candidate_utility
 
 
 @dataclass(frozen=True)

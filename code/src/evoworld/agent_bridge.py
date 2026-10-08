@@ -43,7 +43,7 @@ def build_controller(name='utility', api_key_file=None):
     if api_key_file is None:
         raise ValueError('luna controller requires --api-key-file')
     load_api_key_file(api_key_file)
-    from evolvingnav_paper.controller import LunaToolController
+    from evolvingnav.controller import LunaToolController
     return LunaToolController()
 
 
@@ -66,7 +66,7 @@ def select_public_episodes(rows, tasks, quota):
 
 def load_agent_package(root):
     root = Path(root).resolve()
-    if not (root/'evolvingnav_paper/agent.py').is_file():
+    if not (root/'evolvingnav/agent.py').is_file():
         raise FileNotFoundError(f'EvolvingNav Agent package missing: {root}')
     for path in (root, root/'src', root/'scripts'):
         sys.path.insert(0, str(path))
@@ -176,7 +176,7 @@ def scheduled_motion(row, truth, target, state_ids):
 
 def native_backend(catalog, target, truth, state_ids, inspector):
     """Instantiate two Habitat worlds behind the Agent's public World interface."""
-    from evolvingnav_paper.backend import HabitatInspectionBackend
+    from evolvingnav.backend import HabitatInspectionBackend
     from .bake import simulator
     import habitat_sim
     import magnum as mn
@@ -245,7 +245,7 @@ def native_backend(catalog, target, truth, state_ids, inspector):
 
 def pack_query_for_model(row, scene_map, state_ids, schema):
     import numpy as np
-    from evolvingnav_paper.policy import pack_public_query
+    from evolvingnav.policy import pack_public_query
     regions = schema['region_category_to_id']
     receptacles = schema['receptacle_category_to_id']
     states = scene_map['states'] + [{'room': 'unknown', 'receptacle_category': 'unknown',

@@ -1,4 +1,4 @@
-"""Causal, time-valid 4D entity memory (paper Equations 3, 17 and 18)."""
+"""Causal, time-valid 4D entity memory (event-driven equations 3, 17 and 18)."""
 
 from __future__ import annotations
 
@@ -161,7 +161,7 @@ class VersionedMemory:
 
     def ingest(self, observation: dict, detections: list[dict], state_centers: dict,
                *, entity_ids: dict[int, str] | None = None) -> list[str]:
-        from evolvingnav_paper.coverage import camera_transform
+        from evolvingnav.coverage import camera_transform
         rgb, depth = np.asarray(observation["rgb"]), np.asarray(observation["depth"])
         timestamp = float(observation["timestamp"])
         pose = {key: observation[key] for key in ("position_xyz", "rotation_xyzw")}

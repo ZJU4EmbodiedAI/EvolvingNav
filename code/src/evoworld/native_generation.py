@@ -31,7 +31,7 @@ def generate(config):
     days = int(config.get('days', 5)); count = int(config.get('episodes', 1000)); seed = int(config.get('seed', 1))
     if not scenes or days <= 0 or count <= 0: raise ValueError('positive scenes, days and episodes required')
     if config.get('temporal_splits') and days != 90:
-        raise ValueError('paper temporal_splits require exactly 90 days')
+        raise ValueError('90-day temporal_splits require exactly 90 days')
     catalogs = {}
     source_refs = []
     behavior_model = {}
@@ -110,7 +110,7 @@ def generate(config):
         strict_pair_slot = split_index // 4 if strict_pairing and requested_split else None
         local_index = ((strict_pair_slot * 4 + split_index % 4)
                        if strict_pair_slot is not None else index // len(scenes))
-        # One local-index block is one regime per day. Explicit paper splits
+        # One local-index block is one regime per day. Explicit chronological splits
         # use their own day cycle so requested counts are exact.
         if requested_split:
             lo, hi = split_ranges[requested_split]

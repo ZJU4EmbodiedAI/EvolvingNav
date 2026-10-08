@@ -8,17 +8,17 @@ from pathlib import Path
 
 import numpy as np
 
-from evolvingnav_paper.backend import HabitatInspectionBackend
-from evolvingnav_paper.agent import Agent, AgentConfig
-from evolvingnav_paper.calibration import DetectionCalibrator
-from evolvingnav_paper.controller import LunaToolController
-from evolvingnav_paper.evaluate import aggregate_metrics, oracle_distance, score_agent
-from evolvingnav_paper.memory import VersionedMemory
-from evolvingnav_paper.perception import GroundedSAMInspector
-from evolvingnav_paper.policy import load_belief, model_input_batch, pack_public_query, predict_public
-from evolvingnav_paper.transition import IdentityTransition
-from evolvingnav_paper.transition_model import NeuralTransition, TransitionHead
-from evolvingnav_paper.world import HabitatAgentWorld
+from evolvingnav.backend import HabitatInspectionBackend
+from evolvingnav.agent import Agent, AgentConfig
+from evolvingnav.calibration import DetectionCalibrator
+from evolvingnav.controller import LunaToolController
+from evolvingnav.evaluate import aggregate_metrics, oracle_distance, score_agent
+from evolvingnav.memory import VersionedMemory
+from evolvingnav.perception import GroundedSAMInspector
+from evolvingnav.policy import load_belief, model_input_batch, pack_public_query, predict_public
+from evolvingnav.transition import IdentityTransition
+from evolvingnav.transition_model import NeuralTransition, TransitionHead
+from evolvingnav.world import HabitatAgentWorld
 
 CODE_ROOT = Path(__file__).resolve().parents[1]
 
@@ -98,7 +98,7 @@ def validate_episode_contract(episode: dict, protocol: str) -> None:
     if (spec.get("min_visible_fraction") != .20
             or spec.get("max_geodesic_distance_m") != 1.
             or not spec.get("require_target_visible") or not spec.get("require_stop_action")):
-        raise ValueError("episode success contract does not match the paper")
+        raise ValueError("episode success contract does not match the benchmark")
     if protocol == "n4" and "max_time_s" not in episode["episode_budget"]:
         raise ValueError("N4 requires a fixed predeclared evaluation window")
 

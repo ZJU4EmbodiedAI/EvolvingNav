@@ -1,7 +1,7 @@
 """Non-destructive v8 construction configurations.
 
 The full configuration deliberately rounds split/task quotas to complete
-four-regime counterfactual groups.  The paper does not prescribe exact task
+four-regime counterfactual groups.  The benchmark does not prescribe exact task
 quotas, while an incomplete group would make a paired mobility comparison
 ambiguous.
 """

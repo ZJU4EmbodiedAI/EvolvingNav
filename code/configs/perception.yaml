@@ -1,4 +1,4 @@
-version: evolvingnav_paper_perception_v1
+version: evolvingnav_perception_v1
 device: cuda
 grounding_dino:
   model_id: IDEA-Research/grounding-dino-tiny

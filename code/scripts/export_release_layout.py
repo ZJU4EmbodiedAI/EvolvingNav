@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Export the streaming release into the paper's scene/episode layout."""
+"""Export the streaming release into the public scene/episode layout."""
 from __future__ import annotations
 
 import argparse

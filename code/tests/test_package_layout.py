@@ -5,17 +5,17 @@ from pathlib import Path
 
 
 def test_habitat_helpers_are_packaged() -> None:
-    assert importlib.util.find_spec("evolvingnav_paper.habitat_utils") is not None
+    assert importlib.util.find_spec("evolvingnav.habitat_utils") is not None
 
 
 def test_perception_does_not_import_the_original_readyagent_stack() -> None:
-    source = (Path(__file__).resolve().parents[1] / "evolvingnav_paper/perception.py").read_text()
+    source = (Path(__file__).resolve().parents[1] / "evolvingnav/perception.py").read_text()
     assert "readyagent.artifacts" not in source
     assert "readyagent.perception" not in source
 
 
 def test_navigation_cli_accepts_explicit_asset_paths() -> None:
-    from evolvingnav_paper import run
+    from evolvingnav import run
 
     assert hasattr(run, "arguments")
     args = run.arguments([
@@ -28,7 +28,7 @@ def test_navigation_cli_accepts_explicit_asset_paths() -> None:
 
 
 def test_visual_verifier_accepts_explicit_asset_paths() -> None:
-    from evolvingnav_paper import verify_visual
+    from evolvingnav import verify_visual
 
     assert hasattr(verify_visual, "arguments")
     args = verify_visual.arguments([
@@ -39,7 +39,7 @@ def test_visual_verifier_accepts_explicit_asset_paths() -> None:
 
 
 def test_unit_tests_do_not_require_the_local_benchmark_dataset() -> None:
-    source = (Path(__file__).resolve().parent / "test_paper_code.py").read_text()
+    source = (Path(__file__).resolve().parent / "test_agent_code.py").read_text()
     assert "data/task_datasets" not in source
 
 

@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from evolvingnav_paper.calibration import DetectionCalibrator
+from evolvingnav.calibration import DetectionCalibrator
 
 
 def main() -> int:

@@ -109,7 +109,7 @@ def evaluate_search(
     inspect: Callable,
     task: str = "n2",
 ) -> dict:
-    from evolvingnav_paper.policy import rank_candidates
+    from evolvingnav.policy import rank_candidates
 
     if task not in {"n1", "n2"}:
         raise ValueError(task)

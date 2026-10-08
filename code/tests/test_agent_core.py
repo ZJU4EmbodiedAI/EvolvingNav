@@ -3,11 +3,11 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from evolvingnav_paper.agent import Agent, AgentConfig, ViewEvidence
-from evolvingnav_paper.filter import BeliefFilter, EvidenceLedger
-from evolvingnav_paper.memory import VersionedMemory, backproject
-from evolvingnav_paper.transition import IdentityTransition, MatrixTransition
-from evolvingnav_paper.coverage import (
+from evolvingnav.agent import Agent, AgentConfig, ViewEvidence
+from evolvingnav.filter import BeliefFilter, EvidenceLedger
+from evolvingnav.memory import VersionedMemory, backproject
+from evolvingnav.transition import IdentityTransition, MatrixTransition
+from evolvingnav.coverage import (
     camera_forward, candidate_surface_samples, depth_quality, heading_quaternion,
     visible_sample_ids,
 )
@@ -211,7 +211,7 @@ def test_online_depth_coverage_uses_public_geometry_not_target_mask() -> None:
 
 def test_learned_transition_rows_are_normalized_and_chronological_loss() -> None:
     import torch
-    from evolvingnav_paper.transition_model import TransitionHead, transition_nll
+    from evolvingnav.transition_model import TransitionHead, transition_nll
 
     head = TransitionHead(hidden_dim=8)
     context = torch.randn(2, 8)
@@ -227,7 +227,7 @@ def test_learned_transition_rows_are_normalized_and_chronological_loss() -> None
 
 
 def test_transition_pairs_use_only_same_world_instance_and_later_times() -> None:
-    from evolvingnav_paper.transition_model import chronological_pairs
+    from evolvingnav.transition_model import chronological_pairs
 
     pairs = chronological_pairs(
         instance_ids=np.array(["a", "a", "b", "a"]),
@@ -239,7 +239,7 @@ def test_transition_pairs_use_only_same_world_instance_and_later_times() -> None
 
 
 def test_event_horizon_pairs_are_causal_and_cover_short_target_motion() -> None:
-    from evolvingnav_paper.transition_model import event_horizon_pairs
+    from evolvingnav.transition_model import event_horizon_pairs
 
     pairs = event_horizon_pairs(
         instance_ids=np.array(["a", "a", "a"]),
@@ -255,7 +255,7 @@ def test_event_horizon_pairs_are_causal_and_cover_short_target_motion() -> None:
 
 
 def test_validation_fitted_detection_probability_uses_online_features() -> None:
-    from evolvingnav_paper.calibration import DetectionCalibrator
+    from evolvingnav.calibration import DetectionCalibrator
 
     rows = [
         {"coverage": float(i) / 20, "range_m": 1.0, "angle_cos": 1.0,
@@ -270,7 +270,7 @@ def test_validation_fitted_detection_probability_uses_online_features() -> None:
 
 
 def test_frozen_vlm_controller_can_only_select_legal_public_action() -> None:
-    from evolvingnav_paper.controller import LunaToolController
+    from evolvingnav.controller import LunaToolController
 
     def requester(payload):
         assert payload["model"] == "gpt-5.6-luna"

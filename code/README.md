@@ -5,12 +5,12 @@
 | Path | Function |
 | --- | --- |
 | `src/readyagent/p4d_belief/` | Continuous-time history encoder and persistence–relocation belief |
-| `evolvingnav_paper/memory.py` | Causal entity versions, RGB-D backprojection and evidence provenance |
-| `evolvingnav_paper/transition_model.py` | Row-normalized chronological transition head |
-| `evolvingnav_paper/filter.py` | Current-time belief, arrival forecasts and evidence rounds |
-| `evolvingnav_paper/coverage.py`, `calibration.py` | Online depth coverage and validation-fitted detection probability |
-| `evolvingnav_paper/agent.py`, `controller.py` | Event-driven actions and frozen VLM tool selection |
-| `evolvingnav_paper/world.py`, `backend.py`, `run.py` | Habitat action adapter and benchmark runner |
+| `evolvingnav/memory.py` | Causal entity versions, RGB-D backprojection and evidence provenance |
+| `evolvingnav/transition_model.py` | Row-normalized chronological transition head |
+| `evolvingnav/filter.py` | Current-time belief, arrival forecasts and evidence rounds |
+| `evolvingnav/coverage.py`, `calibration.py` | Online depth coverage and validation-fitted detection probability |
+| `evolvingnav/agent.py`, `controller.py` | Event-driven actions and frozen VLM tool selection |
+| `evolvingnav/world.py`, `backend.py`, `run.py` | Habitat action adapter and benchmark runner |
 | `scripts/` | Dataset packing, belief/transition training and calibration |
 | `tests/` | Unit tests |
 
@@ -67,14 +67,14 @@ python scripts/fit_calibration.py \
 Run the event-driven N3 Agent with Grounding DINO + SAM2:
 
 ```bash
-python -m evolvingnav_paper.run \
+python -m evolvingnav.run \
   --task n3 --world static --limit 10 \
   --dataset "$P4D_DATASET" --tasks "$NAV_TASKS" \
   --hssd-root "$HSSD_ROOT" --navmesh-root "$NAVMESH_ROOT" \
   --checkpoint runs/p4d_seed0/checkpoints/p4d/seed_0/best.pt \
   --calibration runs/detection_calibration.json \
   --output runs/n3_static_10
-python -m evolvingnav_paper.verify_visual runs/n3_static_10 \
+python -m evolvingnav.verify_visual runs/n3_static_10 \
   --tasks "$NAV_TASKS" --hssd-root "$HSSD_ROOT" \
   --navmesh-root "$NAVMESH_ROOT"
 ```
@@ -84,7 +84,7 @@ The default controller is GPT-5.6-Luna. Use `--controller utility` for utility-o
 For an N4 task directory with `public/episodes_n4.jsonl`, each private `target_motion_schedule` event supplies seconds after query (`time_s`), `target_position_xyz`, `current_state_id`, and `valid_goal_viewpoints`:
 
 ```bash
-python -m evolvingnav_paper.run \
+python -m evolvingnav.run \
   --task n4 --world routine --limit 2 \
   --dataset "$P4D_DATASET" --tasks /absolute/path/to/n4_tasks \
   --hssd-root "$HSSD_ROOT" --navmesh-root "$NAVMESH_ROOT" \
@@ -105,7 +105,7 @@ The implementation is under `src/evoworld/`; it generates causal household
 timelines, native Habitat RGB-D histories, four mobility regimes, N1-N5 task
 streams, public/private audits, and Agent execution adapters.
 
-Generate the five-scene configuration or resolve the 54-scene paper-scale
+Generate the five-scene configuration or resolve the 54-scene benchmark-scale
 configuration without materializing files:
 
 ```bash
@@ -122,10 +122,10 @@ Audit an existing dataset and export the public scene layout:
 ```bash
 PYTHONPATH=.:src:scripts python scripts/audit_native.py \
   /absolute/path/to/evoworld_v8 --catalog-root /absolute/path/to/catalogs
-PYTHONPATH=.:src:scripts python scripts/audit_paper_contract.py \
+PYTHONPATH=.:src:scripts python scripts/audit_contract.py \
   --dataset /absolute/path/to/evoworld_v8 \
   --catalog-root /absolute/path/to/catalogs \
-  --output /absolute/path/to/paper_contract_audit.json
+  --output /absolute/path/to/contract_audit.json
 PYTHONPATH=.:src:scripts python scripts/export_release_layout.py \
   --dataset-root /absolute/path/to/evoworld_v8 \
   --catalog-root /absolute/path/to/catalogs \

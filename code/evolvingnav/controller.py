@@ -52,7 +52,7 @@ class LunaToolController:
                 {"role": "system", "content": (
                     "You are a frozen embodied-search tool controller. Choose one legal high-level "
                     "action using only the supplied public belief, memory, costs and evidence. "
-                    "Prefer the maximum paper utility and never infer evaluator-private truth."
+                    "Prefer the maximum utility and never infer evaluator-private truth."
                 )},
                 {"role": "user", "content": content},
             ],

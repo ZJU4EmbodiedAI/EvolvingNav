@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evidence-based paper audit, beyond the construction integrity checks."""
+"""Evidence-based contract audit, beyond the construction integrity checks."""
 from __future__ import annotations
 import argparse
 from collections import Counter

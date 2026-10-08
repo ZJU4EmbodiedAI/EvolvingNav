@@ -10,7 +10,7 @@ import habitat_sim
 import magnum as mn
 import numpy as np
 
-from evolvingnav_paper.habitat_utils import make_simulator, path_distance, sensor_specs, set_agent
+from evolvingnav.habitat_utils import make_simulator, path_distance, sensor_specs, set_agent
 
 
 def visible_fraction_from_masks(actual: np.ndarray, target_only: np.ndarray, semantic_id: int) -> float:

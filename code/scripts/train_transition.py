@@ -13,7 +13,7 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, Dataset
 
-from evolvingnav_paper.transition_model import (
+from evolvingnav.transition_model import (
     TransitionHead, event_horizon_pairs, transition_nll,
 )
 from readyagent.p4d_belief.data import PackedQueries, load_catalog
