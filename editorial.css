@@ -31,17 +31,16 @@ footer{background:#112822;border:0;padding:46px 0 42px;color:#a5c1b0;font-size:1
 @media(max-width:390px){.latest-paper-title .title-project{font-size:39px}.hssd-video-grid{grid-template-columns:1fr}.paper-kicker{font-size:8px}.core-loop-grid{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{animation:none!important;transition:none!important}}
 
-/* Keep the next video row in view, including on shorter laptop screens. */
+/* Keep the original hero geometry. The showcase starts as a soft overlap so
+   the first four HSSD demos remain the visual priority and the next HM3D row
+   can peek into the opening viewport without shrinking the hero footage. */
 @media(min-width:761px){
-  .cinema-hero{padding-top:clamp(20px,4svh,36px);padding-bottom:14px}
-  .paper-kicker{margin-bottom:16px}
-  .paper-heading h1.latest-paper-title{margin-bottom:20px}
-  .latest-paper-title .title-project{font-size:clamp(38px,min(4.3vw,7.8svh),64px);max-width:880px}
-  .latest-paper-title .title-description{font-size:clamp(20px,min(2vw,3.6svh),26px);margin-top:14px;line-height:1.3}
-  .paper-authors{margin-bottom:18px}
-  .paper-authors .author-line{margin:0 0 8px!important;line-height:1.5;row-gap:4px}
-  .hero-bottom{margin-top:18px;padding-top:10px}
-  .demo-gallery>.hssd-demo-strip:first-child{padding-top:18px}
-  .hssd-demo-heading{margin-bottom:14px}
-  .hssd-video-label{min-height:48px;padding-top:9px;padding-bottom:9px}
+  .demo-gallery{
+    margin-top:-46px;
+    z-index:2;
+    border-top:1px solid #ffffff24;
+    border-radius:18px 18px 0 0;
+  }
+  .demo-gallery>.hssd-demo-strip:first-child{padding-top:22px}
+  .hssd-demo-strip+.hssd-demo-strip{margin-top:22px;padding-top:26px}
 }
