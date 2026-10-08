@@ -71,7 +71,6 @@ The complete paper website is available at [zju4embodiedai.github.io/EvolvingNav
 @inproceedings{evolvingnav2027,
   title     = {Beyond the Remembered World: Predictive 4D Belief for Persistent Navigation in Evolving Worlds},
   author    = {Gao, Mingjian and Li, Zhaocheng and Huang, Haoyang and Zhang, Wenqiao and Niu, Yingjie and Zhou, Hao and Li, Chao and Li, Juncheng and Tang, Siliang and Zhuang, Yueting},
-  booktitle = {International Conference on Learning Representations},
-  year      = {2027}
+  year      = {2026}
 }
 ```
