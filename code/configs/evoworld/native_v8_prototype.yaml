@@ -1,0 +1,12 @@
+# Actual native builder: scripts/generate_native_v8.py (not generate.py stubs).
+source_manifest: data/native_full_v7_release/manifest.json
+catalog_root: artifacts/catalog_calibrated_v3
+sources_root: /home/gaomingjian/Desktop/VLA/data/task_datasets
+output: data/native_v8_prototype_20261007
+seed: 20261007
+scenes: 5
+days: 5
+episodes: 1000
+patrol: single_world_blind_full_sweep
+public_private_silhouette: false
+source_statistics: aggregate_hour_and_activity_marginals

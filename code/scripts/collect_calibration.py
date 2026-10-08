@@ -11,7 +11,7 @@ import numpy as np
 
 from evolvingnav_paper.backend import HabitatInspectionBackend
 from evolvingnav_paper.coverage import (
-    camera_forward, candidate_surface_samples, depth_quality, visible_sample_ids,
+    candidate_surface_samples, visible_sample_ids, view_features,
 )
 from evolvingnav_paper.perception import GroundedSAMInspector
 from evolvingnav_paper.run import rows
@@ -91,18 +91,11 @@ def main() -> int:
                 target_pixels = int(np.count_nonzero(semantic))
                 overlaps = [int(np.count_nonzero(detection.mask & semantic))
                             for detection in backend.last_detections]
-                position = np.asarray(viewpoint["position_xyz"], dtype=float)
-                direction = center - position
-                distance = float(np.linalg.norm(direction))
+                features, _ = view_features(samples, covered, viewpoint["position_xyz"],
+                    viewpoint["rotation_xyzw"], depth, backend.last_observation["rgb"],
+                    category=target["category"])
                 observations.append({
-                    "coverage": len(covered) / len(samples),
-                    "range_m": distance,
-                    "angle_cos": max(0.0, float(np.dot(
-                        direction / max(distance, 1e-9),
-                        camera_forward(viewpoint["rotation_xyzw"])))),
-                    "projected_pixels": len(covered),
-                    "depth_quality": depth_quality(depth),
-                    "category_recall": 0.8,
+                    **features,
                     "detected": bool(target_pixels >= 20 and max(overlaps, default=0) / target_pixels >= 0.1),
                 })
             backend.clear()

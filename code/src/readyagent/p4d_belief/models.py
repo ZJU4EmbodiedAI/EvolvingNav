@@ -39,7 +39,7 @@ class SemanticLocationEncoder(nn.Module):
         center = catalog.center_xyz.float()
         known = ~catalog.is_unknown.bool()
         mean = center[known].mean(dim=0)
-        std = center[known].std(dim=0).clamp_min(1e-3)
+        std = center[known].std(dim=0, unbiased=int(known.sum()) > 1).clamp_min(1e-3)
         self.register_buffer("region_category", catalog.region_category.long())
         self.register_buffer("receptacle_category", catalog.receptacle_category.long())
         self.register_buffer("center", center)
@@ -47,15 +47,20 @@ class SemanticLocationEncoder(nn.Module):
         self.register_buffer("center_std", std)
         self.register_buffer("is_unknown", catalog.is_unknown.float())
 
-    def base_nodes(self) -> torch.Tensor:
-        normalized_center = (self.center - self.center_mean) / self.center_std
+    def base_nodes(self, batch=None) -> torch.Tensor:
+        runtime = batch is not None and "location_center_xyz" in batch
+        center = batch["location_center_xyz"] if runtime else self.center
+        region = batch["location_region_category"] if runtime else self.region_category
+        receptacle = batch["location_receptacle_category"] if runtime else self.receptacle_category
+        unknown = batch["location_is_unknown"] if runtime else self.is_unknown
+        normalized_center = (center - self.center_mean) / self.center_std
         return self.project(
             torch.cat(
                 (
-                    self.region_embedding(self.region_category),
-                    self.receptacle_embedding(self.receptacle_category),
+                    self.region_embedding(region.long()),
+                    self.receptacle_embedding(receptacle.long()),
                     normalized_center,
-                    self.is_unknown[:, None],
+                    unknown.float().unsqueeze(-1),
                 ),
                 dim=-1,
             )
@@ -103,6 +108,13 @@ class RelativeTimeEncoderLayer(nn.Module):
 
 
 class HistoryInputs(nn.Module):
+    @staticmethod
+    def gather(nodes, indices):
+        if nodes.ndim == 2:
+            return nodes[indices]
+        batch = torch.arange(nodes.shape[0], device=nodes.device)
+        return nodes[batch[:, None], indices] if indices.ndim == 2 else nodes[batch, indices]
+
     def __init__(self, catalog: Catalog, config: ModelConfig) -> None:
         super().__init__()
         hidden = config.hidden_dim
@@ -143,13 +155,13 @@ class HistoryInputs(nn.Module):
     def forward(
         self, batch: dict[str, torch.Tensor]
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        base_nodes = self.location.base_nodes()
+        base_nodes = self.location.base_nodes(batch)
         event_type = batch["event_type"].long()
         history_mask = batch["history_mask"].bool()
         observed = batch["observed_state_id"].long()
         inspected = batch["candidate_state_id"].long()
         location_id = torch.where(event_type == 1, observed, inspected).clamp_min(0)
-        location_token = base_nodes[location_id]
+        location_token = self.gather(base_nodes, location_id)
         query_days = batch["query_time_days"].float()
         event_days = batch["event_time_days"].float()
         age_hours = ((query_days[:, None] - event_days) * 24.0).clamp_min(0.0)
@@ -165,9 +177,10 @@ class HistoryInputs(nn.Module):
         )
         object_token = self.object_embedding(batch["target_category_id"].long())
         if self.instance_embedding is not None:
-            object_token = object_token + self.instance_embedding(
-                batch["target_instance_id"].long()
-            )
+            identity = self.instance_embedding(batch["target_instance_id"].long())
+            if "target_instance_known" in batch:
+                identity = identity * batch["target_instance_known"][:, None]
+            object_token = object_token + identity
         tokens = self.token_norm(
             location_token
             + self.event_embedding(event_type)
@@ -190,7 +203,7 @@ class HistoryInputs(nn.Module):
         positive_count = positive.sum(dim=1).float()
         inspection_count = inspection.sum(dim=1).float()
         state_one_hot = torch.nn.functional.one_hot(
-            observed.clamp_min(0), num_classes=base_nodes.shape[0]
+            observed.clamp_min(0), num_classes=base_nodes.shape[-2]
         ).bool()
         distinct_states = (state_one_hot & positive[:, :, None]).any(dim=1).sum(dim=1).float()
         previous = torch.full(
@@ -228,7 +241,7 @@ class HistoryInputs(nn.Module):
             ),
             dim=-1,
         )
-        last_node = base_nodes[batch["last_state"].long()]
+        last_node = self.gather(base_nodes, batch["last_state"].long())
         observable_context = torch.zeros_like(last_node)
         if "context_mask" in batch:
             context_mask = batch["context_mask"].bool()
@@ -259,9 +272,10 @@ class HistoryInputs(nn.Module):
         self, base_nodes: torch.Tensor, batch: dict[str, torch.Tensor]
     ) -> torch.Tensor:
         candidate_ids = batch["candidate_state_ids"].long().clamp_min(0)
-        nodes = base_nodes[candidate_ids]
-        centers = self.location.center[candidate_ids]
-        last_center = self.location.center[batch["last_state"].long()]
+        nodes = self.gather(base_nodes, candidate_ids)
+        geometry_nodes = batch.get("location_center_xyz", self.location.center)
+        centers = self.gather(geometry_nodes, candidate_ids)
+        last_center = self.gather(geometry_nodes, batch["last_state"].long())
         relative = (centers - last_center[:, None, :]) / self.location.center_std
         distance = torch.linalg.vector_norm(relative, dim=-1, keepdim=True)
         is_last = (

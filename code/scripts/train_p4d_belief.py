@@ -79,7 +79,7 @@ def write_report(
     train_config: TrainConfig,
 ) -> None:
     lines = [
-        "# P4D-Belief 30天 Pilot 训练与测试报告",
+        "# P4D-Belief 30天训练与测试报告",
         "",
         "## 实验设置",
         "",
@@ -97,7 +97,7 @@ def write_report(
         f"- Routine发生隐藏事件后回到last state的记录：{audit['routine_return_to_last_records']}",
         "- `y_moved`表示查询状态与last state是否不同，不表示期间是否曾发生移动。",
         "",
-        "## Test主结果（5 seeds均值±标准差）",
+        "## Seed 聚合指标",
         "",
         "| 方法 | 子集 | Top-1 | Top-3 | NLL | ECE | 平均检查位置 | Persistence AUROC |",
         "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -119,7 +119,7 @@ def write_report(
     lines.extend(
         [
             "",
-            "## 新版专项结果",
+            "## 专项训练指标",
             "",
             "| 方法 | 子集 | 样本 | Top-1 | Top-3 | NLL | 平均检查位置 |",
             "| --- | --- | ---: | ---: | ---: | ---: | ---: |",

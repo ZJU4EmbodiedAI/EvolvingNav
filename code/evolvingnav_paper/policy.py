@@ -32,7 +32,9 @@ def pack_public_query(query: dict, schema: dict, candidate_features: dict) -> di
         state_count=int(schema["state_count_including_unknown"]),
         candidate_features=candidate_features,
     )
-    allowed = (*MODEL_INPUT_KEYS, *OPTIONAL_MODEL_INPUT_KEYS, "instance_uuid")
+    allowed = (*MODEL_INPUT_KEYS, *OPTIONAL_MODEL_INPUT_KEYS, "instance_uuid",
+               "candidate_region_category_id", "candidate_receptacle_category_id",
+               "candidate_center_xyz", "candidate_is_unknown")
     return {key: packed[key] for key in allowed if key in packed}
 
 
@@ -103,16 +105,23 @@ def model_input_batch(arrays: dict[str, np.ndarray], schema: dict):
     last_index = candidates.index(last_state)
     instance = str(arrays["instance_uuid"][0])
     vocabulary = schema.get("instance_uuid_to_id", {})
-    if instance not in vocabulary:
-        raise ValueError(f"unseen instance identity for this checkpoint: {instance}")
     batch = {
         key: torch.as_tensor(arrays[key])
         for key in (*MODEL_INPUT_KEYS, *OPTIONAL_MODEL_INPUT_KEYS)
         if key in arrays
     }
-    batch["target_instance_id"] = torch.tensor([vocabulary[instance]])
+    batch["target_instance_id"] = torch.tensor([vocabulary.get(instance, 0)])
+    batch["target_instance_known"] = torch.tensor([instance in vocabulary])
     batch["last_state"] = torch.tensor([last_state])
     batch["last_candidate_index"] = torch.tensor([last_index])
+    for source, destination in (
+        ("candidate_region_category_id", "location_region_category"),
+        ("candidate_receptacle_category_id", "location_receptacle_category"),
+        ("candidate_center_xyz", "location_center_xyz"),
+        ("candidate_is_unknown", "location_is_unknown"),
+    ):
+        if source in arrays:
+            batch[destination] = torch.as_tensor(arrays[source])[None]
     return batch
 
 

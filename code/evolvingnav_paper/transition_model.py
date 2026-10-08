@@ -154,6 +154,7 @@ class NeuralTransition:
         device = next(self.model.parameters()).device
         batch = {key: value.to(device) for key, value in self.batch.items()}
         batch["query_time_days"] = batch["query_time_days"] + self.elapsed_s / 86400.0
+        batch["query_weekday_id"] = batch["query_time_days"].floor().long() % 7
         batch["elapsed_since_last_positive_days"] = (
             batch["elapsed_since_last_positive_days"] + self.elapsed_s / 86400.0
         )
@@ -161,14 +162,17 @@ class NeuralTransition:
         batch["query_time_of_day_sin_cos"] = torch.stack(
             (day_phase.sin(), day_phase.cos()), dim=-1
         )
+        present = batch["candidate_state_ids"][0].tolist()
+        index = [present.index(state) for state in states]
+        allowed = torch.zeros_like(batch["candidate_mask"])
+        allowed[:, index] = True
+        batch["candidate_mask"] = batch["candidate_mask"].bool() & allowed.bool()
         with torch.inference_mode():
             context, candidates = self.model.backbone(batch)
             kernel = self.head(
                 context, candidates, torch.tensor([elapsed_s], device=device),
                 batch["candidate_mask"],
             )[0]
-        candidate_ids = batch["candidate_state_ids"][0].tolist()
-        index = [candidate_ids.index(state) for state in states]
         return kernel[index][:, index].cpu().numpy()
 
     def advance_clock(self, elapsed_s: float) -> None:

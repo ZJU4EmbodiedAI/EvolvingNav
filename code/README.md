@@ -23,10 +23,11 @@ cd code
 python -m pip install -r requirements.txt
 export PYTHONPATH=.:src:scripts
 export MAGNUM_LOG=quiet HABITAT_SIM_LOG=quiet
-export P4D_DATASET=/absolute/path/to/p4d_hssd_30d_v0.6.0
-export NAV_TASKS=/absolute/path/to/p4d_navigation_107734254_v1.0
+export P4D_DATASET=/absolute/path/to/training_dataset
+export NAV_TASKS=/absolute/path/to/navigation_tasks
 export HSSD_ROOT=/absolute/path/to/hssd-hab
 export NAVMESH_ROOT=/absolute/path/to/hssd-hab/navmeshes
+export OPENAI_API_KEY="<your-api-key>"
 ```
 
 ## Train
@@ -42,7 +43,7 @@ Train the query-time belief and the chronological transition head:
 ```bash
 python scripts/train_p4d_belief.py \
   --dataset-root "$P4D_DATASET" --output runs/p4d_seed0 \
-  --seeds 0 --skip-classical
+  --seeds 0 1 2 3 4 --skip-classical
 python scripts/train_transition.py \
   --dataset "$P4D_DATASET" \
   --belief-checkpoint runs/p4d_seed0/checkpoints/p4d/seed_0/best.pt \
@@ -78,7 +79,7 @@ python -m evolvingnav_paper.verify_visual runs/n3_static_10 \
   --navmesh-root "$NAVMESH_ROOT"
 ```
 
-Add `--controller luna` and set `OPENAI_API_KEY` to use the frozen GPT-5.6-Luna tool controller. Model IDs and revisions for Grounding DINO and SAM2 are in `configs/perception.yaml`.
+The default controller is GPT-5.6-Luna. Use `--controller utility` for utility-only selection. Model IDs and revisions for Grounding DINO and SAM2 are in `configs/perception.yaml`.
 
 For an N4 task directory with `public/episodes_n4.jsonl`, each private `target_motion_schedule` event supplies seconds after query (`time_s`), `target_position_xyz`, `current_state_id`, and `valid_goal_viewpoints`:
 
@@ -89,10 +90,69 @@ python -m evolvingnav_paper.run \
   --hssd-root "$HSSD_ROOT" --navmesh-root "$NAVMESH_ROOT" \
   --checkpoint runs/p4d_seed0/checkpoints/p4d/seed_0/best.pt \
   --transition-checkpoint runs/transition_seed0/best.pt \
+  --calibration runs/detection_calibration.json \
   --output runs/n4_routine_2
 ```
 
+For a held-out scene, set `--task n5 --protocol n3` and point `--tasks` to its public catalog and episodes. Use `--protocol n4` with a transition checkpoint for dynamic held-out episodes.
+
 Every run writes `policy.jsonl`, `scores.jsonl` and `summary.json` to a new output directory.
+
+## EVOWORLD-BENCH
+
+The repository also contains the complete evolving-world benchmark workflow.
+The implementation is under `src/evoworld/`; it generates causal household
+timelines, native Habitat RGB-D histories, four mobility regimes, N1-N5 task
+streams, public/private audits, and Agent execution adapters.
+
+Generate the five-scene configuration or resolve the 54-scene paper-scale
+configuration without materializing files:
+
+```bash
+PYTHONPATH=.:src:scripts python scripts/generate_native_v8.py \
+  --output /absolute/path/to/evoworld_v8 \
+  --scale prototype
+
+PYTHONPATH=.:src:scripts python scripts/generate_native_v8.py \
+  --output /tmp/evoworld_full_plan --scale full --dry-run
+```
+
+Audit an existing dataset and export the public scene layout:
+
+```bash
+PYTHONPATH=.:src:scripts python scripts/audit_native.py \
+  /absolute/path/to/evoworld_v8 --catalog-root /absolute/path/to/catalogs
+PYTHONPATH=.:src:scripts python scripts/audit_paper_contract.py \
+  --dataset /absolute/path/to/evoworld_v8 \
+  --catalog-root /absolute/path/to/catalogs \
+  --output /absolute/path/to/paper_contract_audit.json
+PYTHONPATH=.:src:scripts python scripts/export_release_layout.py \
+  --dataset-root /absolute/path/to/evoworld_v8 \
+  --catalog-root /absolute/path/to/catalogs \
+  --output /absolute/path/to/evoworld_release
+```
+
+Run the Agent on public episodes. The evaluator-private stream is consumed
+only by the local execution backend:
+
+```bash
+PYTHONPATH=.:src:scripts python scripts/run_native_agent.py \
+  --dataset /absolute/path/to/evoworld_v8 \
+  --split test \
+  --catalog-root /absolute/path/to/catalogs \
+  --agent-root /absolute/path/to/EvolvingNav/code \
+  --output /absolute/path/to/agent_run \
+  --calibration /absolute/path/to/detection_calibration.json \
+  --prior last_seen --controller utility
+```
+
+The optional train-only transition workflow is
+`scripts/train_native_transition.py`; it reads train and validation streams,
+never opens test records, and writes a provenance manifest with
+`test_used=false`.
+
+The benchmark code is source-only in this repository. Generated datasets,
+model checkpoints, run logs, cache directories, and credentials are excluded.
 
 ## Tests
 

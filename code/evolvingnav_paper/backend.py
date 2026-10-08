@@ -83,33 +83,20 @@ class HabitatInspectionBackend:
         agent = habitat_sim.agent.AgentConfiguration()
         agent.sensor_specifications = sensor_specs(320, 240)
         target_only = habitat_sim.Simulator(habitat_sim.Configuration(config, [agent]))
-        try:
-            target_only_id = self._place_target(target_only, truth, target)
-            self.projected_pixels = {}
-            for state in candidate_ids:
-                viewpoint = self.public_viewpoints[state]
-                set_agent(
-                    target_only.get_agent(0), viewpoint["position_xyz"],
-                    viewpoint["rotation_xyzw"],
-                )
-                semantic = np.asarray(target_only.get_sensor_observations()["semantic"])
-                self.projected_pixels[state] = int(np.count_nonzero(semantic == self.semantic_id))
-        finally:
-            if not dynamic:
-                target_only.close()
-        if dynamic:
-            self.target_only = target_only
-            self.target_only_object_id = target_only_id
+        self.target_only = target_only
+        self.target_only_object_id = self._place_target(target_only, truth, target)
         self.real = make_simulator(
             self.hssd_root, self.scene_id, self.navmesh, self.gpu, 320, 240
         )
         self.object_id = self._place_target(self.real, truth, target)
 
     def inspect(self, state: int, position) -> dict:
+        return self.observe(position, self.public_viewpoints[state]["rotation_xyzw"])
+
+    def observe(self, position, rotation) -> dict:
         if self.truth is None:
             raise RuntimeError("prepare an episode before inspection")
-        viewpoint = self.public_viewpoints[state]
-        set_agent(self.real.get_agent(0), position, viewpoint["rotation_xyzw"])
+        set_agent(self.real.get_agent(0), position, rotation)
         observations = self.real.get_sensor_observations()
         self.last_observation = {
             "rgb": np.asarray(observations["rgb"]),
@@ -118,12 +105,9 @@ class HabitatInspectionBackend:
         actual = np.asarray(observations["semantic"])
         self.last_semantic = actual
         actual_pixels = int(np.count_nonzero(actual == self.semantic_id))
-        if self.target_only is not None:
-            set_agent(self.target_only.get_agent(0), position, viewpoint["rotation_xyzw"])
-            projection = np.asarray(self.target_only.get_sensor_observations()["semantic"])
-            projected_pixels = int(np.count_nonzero(projection == self.semantic_id))
-        else:
-            projected_pixels = self.projected_pixels[state]
+        set_agent(self.target_only.get_agent(0), position, rotation)
+        projection = np.asarray(self.target_only.get_sensor_observations()["semantic"])
+        projected_pixels = int(np.count_nonzero(projection == self.semantic_id))
         visible_fraction = min(1.0, actual_pixels / projected_pixels) if projected_pixels else 0.0
         goal_distance = min(
             self.distance(position, goal["position_xyz"])
@@ -150,6 +134,10 @@ class HabitatInspectionBackend:
             "distance_to_valid_goal_m": goal_distance,
             "visible_target_pixels": actual_pixels,
             "projected_target_pixels": projected_pixels,
+            "identified_target": (any(np.any(item.mask & (actual == self.semantic_id))
+                                      for item in self.last_detections)
+                                  if self.last_detections else detected and self.detector is None),
+            "true_state_id": int(self.truth["current_state_id"]),
         }
 
     def move_target(self, event: dict) -> None:

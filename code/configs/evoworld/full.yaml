@@ -1,0 +1,9 @@
+name: EVOWORLD-BENCH
+seed: 20260926
+output_root: data/evoworld_bench_full
+asset_root: /home/gaomingjian/Desktop/VLA/data/scene_datasets/hssd-hab
+scene_selection: data/evoworld_scene_manifest.json
+scene_count: 54
+days: 90
+episodes: 803680
+render: true

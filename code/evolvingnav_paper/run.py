@@ -12,7 +12,7 @@ from evolvingnav_paper.backend import HabitatInspectionBackend
 from evolvingnav_paper.agent import Agent, AgentConfig
 from evolvingnav_paper.calibration import DetectionCalibrator
 from evolvingnav_paper.controller import LunaToolController
-from evolvingnav_paper.evaluate import evaluate_search
+from evolvingnav_paper.evaluate import aggregate_metrics, oracle_distance, score_agent
 from evolvingnav_paper.memory import VersionedMemory
 from evolvingnav_paper.perception import GroundedSAMInspector
 from evolvingnav_paper.policy import load_belief, model_input_batch, pack_public_query, predict_public
@@ -32,9 +32,10 @@ def rows(path: Path):
 
 def arguments(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--task", choices=("n1", "n2", "n3", "n4"), default="n3")
+    parser.add_argument("--task", choices=("n1", "n2", "n3", "n4", "n5"), default="n3")
+    parser.add_argument("--protocol", choices=("n1", "n2", "n3", "n4"))
     parser.add_argument("--agent", action="store_true", help="Run the event-driven Agent for N1/N2 as well")
-    parser.add_argument("--controller", choices=("utility", "luna"), default="utility")
+    parser.add_argument("--controller", choices=("utility", "luna"), default="luna")
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--world", choices=("routine", "random", "static"), default="routine")
     parser.add_argument("--dataset", type=Path, required=True)
@@ -52,217 +53,195 @@ def arguments(argv: list[str] | None = None) -> argparse.Namespace:
     args = parser.parse_args(argv)
     if args.limit < 1:
         parser.error("--limit must be positive")
-    if args.task == "n4" and args.transition_checkpoint is None:
+    args.protocol = args.protocol if args.task == "n5" else args.task
+    if args.protocol is None:
+        parser.error("N5 requires --protocol")
+    if args.protocol == "n4" and args.transition_checkpoint is None:
         parser.error("N4 requires --transition-checkpoint")
     return args
+
+
+def public_features(states: list[dict], schema: dict) -> dict:
+    states = sorted(states, key=lambda row: int(row["state_id"]))
+    if [int(row["state_id"]) for row in states] != list(range(len(states))):
+        raise ValueError("public state IDs must be dense and zero-based")
+    return {
+        "candidate_region_category_id": np.asarray([
+            schema["region_category_to_id"].get(row["region_category"], schema["region_category_to_id"]["unknown"])
+            for row in states], dtype=np.int64),
+        "candidate_receptacle_category_id": np.asarray([
+            schema["receptacle_category_to_id"].get(row["receptacle_category"], schema["receptacle_category_to_id"]["unknown"])
+            for row in states], dtype=np.int64),
+        "candidate_center_xyz": np.asarray([row.get("state_center") or [0., 0., 0.]
+                                             for row in states], dtype=np.float32),
+        "candidate_is_unknown": np.asarray([row.get("is_unknown", row.get("region_id") == "unknown")
+                                             for row in states]),
+    }
+
+
+def episode_config(episode: dict, protocol: str, unknown_state: int | None) -> AgentConfig:
+    budget = episode["episode_budget"]
+    return AgentConfig(
+        protocol=protocol,
+        max_inspections=1 if protocol == "n1" else int(budget["max_candidate_inspections"]),
+        max_path_m=float(budget["max_path_length_m"]),
+        max_time_s=float(budget.get("max_time_s", 3600.)),
+        max_steps=int(budget.get("max_steps", 500)),
+        max_explorations=int(budget.get("max_explorations", 10))
+            if "EXPLORE" in episode["public_refs"].get("action_space", []) else 0,
+        unknown_state=unknown_state,
+    )
+
+
+def validate_episode_contract(episode: dict, protocol: str) -> None:
+    spec = episode["success_spec"]
+    if (spec.get("min_visible_fraction") != .20
+            or spec.get("max_geodesic_distance_m") != 1.
+            or not spec.get("require_target_visible") or not spec.get("require_stop_action")):
+        raise ValueError("episode success contract does not match the paper")
+    if protocol == "n4" and "max_time_s" not in episode["episode_budget"]:
+        raise ValueError("N4 requires a fixed predeclared evaluation window")
 
 
 def main() -> int:
     args = arguments()
     if args.output.exists():
-        raise FileExistsError(f"output already exists: {args.output}")
-
-    episodes = []
-    for episode in rows(args.tasks / f"public/episodes_{args.task}.jsonl"):
-        if episode["world_variant"] == args.world:
-            episodes.append(episode)
-        if len(episodes) == args.limit:
-            break
+        raise FileExistsError(args.output)
+    if args.inspection == "grounded-sam" and args.calibration is None:
+        raise ValueError("Grounded-SAM execution requires --calibration")
+    episode_path = args.tasks / f"public/episodes_{args.task}.jsonl"
+    if args.task == "n5" and not episode_path.exists():
+        episode_path = args.tasks / f"public/episodes_{args.protocol}.jsonl"
+    episodes = [row for row in rows(episode_path) if row["world_variant"] == args.world][:args.limit]
     if len(episodes) != args.limit:
         raise ValueError(f"only found {len(episodes)} matching episodes")
-    wanted_queries = {episode["query_id"] for episode in episodes}
-    queries = {row["query_id"]: row for row in rows(args.tasks / "public/query_inputs.jsonl") if row["query_id"] in wanted_queries}
-    active_checkpoint = args.transition_checkpoint if args.task == "n4" else args.checkpoint
+    for episode in episodes:
+        validate_episode_contract(episode, args.protocol)
+    wanted_queries = {row["query_id"] for row in episodes}
+    queries = {row["query_id"]: row for row in rows(args.tasks / "public/query_inputs.jsonl")
+               if row["query_id"] in wanted_queries}
+    active_checkpoint = args.transition_checkpoint if args.protocol == "n4" else args.checkpoint
     model, schema = load_belief(active_checkpoint, args.dataset)
     transition_head = None
-    if args.task == "n4":
+    if args.protocol == "n4":
         import torch
-
         checkpoint = torch.load(active_checkpoint, map_location="cpu", weights_only=True)
         transition_head = TransitionHead(checkpoint["model_config"]["hidden_dim"])
         transition_head.load_state_dict(checkpoint["transition_head"])
         transition_head.eval()
-    with np.load(args.dataset / "records/packed/train.npz", allow_pickle=False) as train:
-        features = {key: train[key] for key in (
-            "candidate_region_category_id", "candidate_receptacle_category_id",
-            "candidate_center_xyz", "candidate_is_unknown",
-        )}
+
     catalog = json.loads((args.tasks / "catalogs/candidate_states_navigation.json").read_text())
-    public_viewpoints = {
-        int(row["state_id"]): row["navigation_viewpoint"]
-        for row in catalog["states"] if row.get("navigation_eligible")
-    }
-    public_goals = {state: row["position_xyz"] for state, row in public_viewpoints.items()}
-    all_centers = {
-        int(row["state_id"]): row["state_center"] for row in catalog["states"]
-    }
-    state_centers = {
-        int(row["state_id"]): row["state_center"]
-        for row in catalog["states"] if row.get("navigation_eligible")
-    }
-    surface_points = {
-        int(row["state_id"]): [slot["point"] for slot in row.get("sampled_place_points", [])]
-        for row in rows(args.tasks / "catalogs/receptacles.jsonl")
-    }
-    objects = {
-        row["instance_uuid"]: row
-        for row in rows(args.tasks / "catalogs/object_instances.jsonl")
-    }
-
-    decisions = []
-    query_batches = []
-    for episode in episodes:
-        query = queries[episode["query_id"]]
-        packed = pack_public_query(query, schema, features)
-        query_batches.append(model_input_batch(packed, schema))
-        belief = predict_public(model, schema, packed)
-        candidates = {
-            int(state): belief[int(state)]
-            for state in episode["public_refs"]["candidate_state_ids"]
-        }
-        decisions.append({
-            "base_episode_id": episode["base_episode_id"], "query_id": episode["query_id"],
-            "task": args.task, "belief": candidates,
-        })
-
-    wanted = {episode["base_episode_id"] for episode in episodes}
-    private = {
-        row["base_episode_id"]: row["evaluation_private"]
-        for row in rows(args.tasks / "private/evaluation_gt.jsonl")
-        if row["base_episode_id"] in wanted
-    }
-    scene_ids = {episode["scene_id"] for episode in episodes}
-    if len(scene_ids) != 1:
-        raise ValueError("--tasks must select episodes from one scene")
-    scene_id = next(iter(scene_ids))
-    navmesh = args.navmesh_root / f"{scene_id}.navmesh"
-    inspector = (
-        GroundedSAMInspector(
-            args.perception_config,
-            dino_model=args.grounding_dino_model,
-            sam_model=args.sam2_model,
-        )
-        if args.inspection == "grounded-sam" else None
-    )
-    backend = HabitatInspectionBackend(
-        args.hssd_root, scene_id, navmesh, public_viewpoints,
-        detector=inspector,
-    )
+    features = public_features(catalog["states"], schema)
+    scene_schema = {**schema, "state_count_including_unknown": len(catalog["states"])}
+    viewpoints = {int(row["state_id"]): row["navigation_viewpoint"]
+                  for row in catalog["states"] if row.get("navigation_eligible")}
+    goals = {state: row["position_xyz"] for state, row in viewpoints.items()}
+    centers = {int(row["state_id"]): row["state_center"] for row in catalog["states"]
+               if row.get("state_center") is not None}
+    surface_points = {int(row["state_id"]): [slot["point"] for slot in row.get("sampled_place_points", [])]
+                      for row in rows(args.tasks / "catalogs/receptacles.jsonl")}
+    objects = {row["instance_uuid"]: row for row in rows(args.tasks / "catalogs/object_instances.jsonl")}
+    wanted = {row["base_episode_id"] for row in episodes}
+    private = {row["base_episode_id"]: row["evaluation_private"]
+               for row in rows(args.tasks / "private/evaluation_gt.jsonl")
+               if row["base_episode_id"] in wanted}
+    unknown_ids = np.flatnonzero(features["candidate_is_unknown"])
+    unknown = int(unknown_ids[0]) if len(unknown_ids) else None
+    inspector = GroundedSAMInspector(args.perception_config,
+        dino_model=args.grounding_dino_model, sam_model=args.sam2_model
+    ) if args.inspection == "grounded-sam" else None
     calibrator = DetectionCalibrator.load(args.calibration) if args.calibration else None
     controller = LunaToolController() if args.controller == "luna" else None
-    scores = []
+    decisions, scores = [], []
+    backend = None
     try:
-        for episode, decision in zip(episodes, decisions, strict=True):
+        for episode in episodes:
+            if episode["scene_id"] != catalog["scene_id"]:
+                raise ValueError("episode and public scene catalog disagree")
+            query = queries[episode["query_id"]]
+            packed = pack_public_query(query, scene_schema, features)
+            batch = model_input_batch(packed, scene_schema)
+            probabilities = predict_public(model, scene_schema, packed)
+            allowed = {int(state) for state in episode["public_refs"]["candidate_state_ids"]}
+            if unknown is not None:
+                allowed.add(unknown)
+            prior = {state: mass for state, mass in probabilities.items() if state in allowed}
+            prior = {state: mass / sum(prior.values()) for state, mass in prior.items()}
+            decisions.append({"base_episode_id": episode["base_episode_id"],
+                              "query_id": episode["query_id"], "task": args.task, "belief": prior})
             truth = private[episode["base_episode_id"]]
-            backend.prepare(
-                truth, objects[episode["target"]["object_id"]],
-                [state for state in decision["belief"] if state in public_goals],
-                dynamic=args.task == "n4",
-            )
-            if args.task in {"n3", "n4"} or args.agent:
-                query = queries[episode["query_id"]]
-                target_id = query["input"]["target"]["instance_uuid"]
-                memory = VersionedMemory()
-                for index, event in enumerate(query["input"].get("target_history", [])):
-                    if event["event_type"] == "positive_observation":
-                        observed_state = int(event["observed_state_id"])
-                        memory.observe(
-                            target_id, observed_state, float(event["timestamp_s"]),
-                            float(event["detector_confidence"])
-                            * float(event["instance_match_confidence"]),
-                            f"{query['query_id']}:history:{index}",
-                            np.asarray(all_centers[observed_state]),
-                        )
-                motion_schedule = None
-                if args.task == "n4":
-                    motion_schedule = truth.get("target_motion_schedule")
-                    if motion_schedule is None:
-                        raise ValueError("N4 private evaluation record requires target_motion_schedule")
-                    required_motion = {
-                        "time_s", "target_position_xyz", "current_state_id",
-                        "valid_goal_viewpoints",
-                    }
-                    if any(required_motion - set(event) for event in motion_schedule):
-                        raise ValueError("N4 target_motion_schedule has incomplete motion events")
-                world = HabitatAgentWorld(
-                    backend, public_viewpoints,
-                    state_centers,
-                    episode["agent_start"]["position_xyz"],
-                    episode["agent_start"]["rotation_xyzw"],
-                    calibrator=calibrator,
-                    known_states=set(decision["belief"]),
-                    motion_schedule=motion_schedule,
-                    surface_points=surface_points,
-                )
-                unknown_ids = [int(i) for i, flag in enumerate(features["candidate_is_unknown"]) if flag]
-                can_explore = "EXPLORE" in episode["public_refs"].get("action_space", [])
-                transition = (NeuralTransition(model, transition_head, query_batches[len(scores)])
-                              if args.task == "n4" else IdentityTransition())
-                agent = Agent(
-                    decision["belief"], public_goals, world, transition,
-                    AgentConfig(
-                        max_inspections=1 if args.task == "n1" else int(
-                            episode["episode_budget"]["max_candidate_inspections"]),
-                        max_path_m=float(episode["episode_budget"]["max_path_length_m"]),
-                        chunk_m=2.0,
-                        unknown_state=unknown_ids[0] if can_explore and unknown_ids else None,
-                    ),
-                    sample_count={state: 25 for state in decision["belief"]},
-                    controller=controller,
-                    memory=memory, target_id=target_id,
-                    time_origin_s=float(query["input"]["query"]["query_time_s"]),
-                )
-                result = agent.run()
-                final = world.private_inspections[-1] if world.private_inspections else None
-                success = bool(
-                    result.found and final is not None
-                    and final["distance_to_valid_goal_m"]
-                    <= float(episode["success_spec"]["max_geodesic_distance_m"])
-                    and final["visible_fraction"] >= 0.20
-                )
-                oracle_m = float(truth["oracle_shortest_path_m"])
-                score = {
-                    "base_episode_id": episode["base_episode_id"],
-                    "task": args.task, "success": success,
-                    "inspections": len(result.inspections),
-                    "inspection_order": result.inspections,
-                    "inspection_evidence": world.private_inspections,
-                    "actions": result.actions, "path_m": round(result.path_m, 6),
-                    "spl": round(float(success) * oracle_m / max(result.path_m, oracle_m, 1e-9), 6),
-                    "true_state_id": int(backend.truth["current_state_id"]),
-                    "posterior": result.posterior,
-                    "termination": result.termination,
-                    "evidence_trace": result.evidence_trace,
-                }
-            else:
-                score = evaluate_search(
-                    episode, truth, decision["belief"],
-                    start=episode["agent_start"]["position_xyz"], goals=public_goals,
-                    distance=backend.distance, inspect=backend.inspect, task=args.task,
-                )
-            scores.append(score)
+            schedule = truth.get("target_motion_schedule", []) if args.protocol == "n4" else []
+            if args.protocol == "n4" and not schedule:
+                raise ValueError("N4 requires a predeclared target_motion_schedule")
+            required = {"time_s", "target_position_xyz", "current_state_id", "valid_goal_viewpoints"}
+            if any(required - set(event) for event in schedule):
+                raise ValueError("incomplete target motion event")
+            if backend is None:
+                backend = HabitatInspectionBackend(args.hssd_root, episode["scene_id"],
+                    args.navmesh_root / f"{episode['scene_id']}.navmesh", viewpoints, detector=inspector)
+            backend.prepare(truth, objects[episode["target"]["object_id"]],
+                            list(set(prior) & set(goals)), dynamic=args.protocol == "n4")
+            config = episode_config(episode, args.protocol, unknown)
+            phases = [(0., [goal["position_xyz"] for goal in truth["valid_goal_viewpoints"]])]
+            phases += [(float(event["time_s"]), [goal["position_xyz"] for goal in event["valid_goal_viewpoints"]])
+                       for event in schedule if 0 < event["time_s"] <= config.max_time_s]
+            reference = oracle_distance(start=episode["agent_start"]["position_xyz"],
+                phases=phases, distance=backend.distance, max_time_s=config.max_time_s,
+                max_path_m=config.max_path_m, max_steps=config.max_steps)
+            if reference is None:
+                raise ValueError("episode has no budget-feasible oracle path")
+
+            target = query["input"]["target"]
+            target_id = target["instance_uuid"]
+            memory = VersionedMemory()
+            for index, event in enumerate(query["input"].get("target_history", [])):
+                if event["event_type"] == "positive_observation":
+                    state = int(event["observed_state_id"])
+                    memory.observe(target_id, state, float(event["timestamp_s"]),
+                        float(event["detector_confidence"]) * float(event["instance_match_confidence"]),
+                        f"{query['query_id']}:history:{index}",
+                        np.asarray(event.get("world_point", centers.get(state, [0., 0., 0.]))),
+                        tuple(event.get("visual_feature", ())), category=target["category"],
+                        attributes=event.get("attributes"), relations={"at": str(state)})
+                elif event["event_type"] == "candidate_inspection":
+                    memory.record_negative(f"{query['query_id']}:history:{index}",
+                        int(event["candidate_state_id"]), float(event["timestamp_s"]),
+                        event.get("pose_xyz", [0., 0., 0.]))
+            world = HabitatAgentWorld(backend, viewpoints,
+                {state: centers[state] for state in viewpoints},
+                episode["agent_start"]["position_xyz"], episode["agent_start"]["rotation_xyzw"],
+                calibrator=calibrator, known_states=set(prior),
+                motion_schedule=schedule, surface_points=surface_points)
+            transition = NeuralTransition(model, transition_head, batch) if args.protocol == "n4" else IdentityTransition()
+            result = Agent(prior, goals, world, transition, config,
+                sample_count={state: world.sample_count(state) for state in prior if state in viewpoints},
+                controller=controller, memory=memory, target_id=target_id,
+                time_origin_s=float(query["input"]["query"]["query_time_s"]),
+                target={**target, "instruction": episode["target"].get("instruction", "")}).run()
+            score = score_agent(result, world.private_inspections, reference_distance=reference,
+                initial_state=int(truth["current_state_id"]), schedule=schedule, max_time_s=config.max_time_s)
+            scores.append({**score, "base_episode_id": episode["base_episode_id"], "task": args.task,
+                "protocol": args.protocol, "actions": result.actions, "path_m": result.path_m,
+                "elapsed_s": result.elapsed_s, "steps": result.steps, "inspection_order": result.inspections,
+                "covered_inspections": result.covered_inspections, "inspection_evidence": world.private_inspections,
+                "posterior": result.posterior, "termination": result.termination,
+                "evidence_trace": result.evidence_trace})
             backend.clear()
     finally:
-        backend.close()
+        if backend is not None:
+            backend.close()
         if inspector is not None:
             inspector.close()
 
     args.output.mkdir(parents=True)
-    with (args.output / "policy.jsonl").open("w", encoding="utf-8") as handle:
-        for decision in decisions:
-            handle.write(json.dumps(decision, ensure_ascii=False) + "\n")
-    with (args.output / "scores.jsonl").open("w", encoding="utf-8") as handle:
-        for score in scores:
-            handle.write(json.dumps(score, ensure_ascii=False) + "\n")
-    summary = {
-        "task": args.task, "world": args.world, "episodes": len(scores),
-        "successes": sum(row["success"] for row in scores),
-        "sr": sum(row["success"] for row in scores) / len(scores),
-        "spl": sum(row["spl"] for row in scores) / len(scores),
-        "track": f"high_level_{'event_agent' if args.task in {'n3', 'n4'} or args.agent else 'ranked'}_{args.inspection}",
-        "min_visible_fraction": 0.20,
-        "dataset": str(args.tasks), "checkpoint": str(args.checkpoint),
-    }
+    for name, records in (("policy", decisions), ("scores", scores)):
+        with (args.output / f"{name}.jsonl").open("w", encoding="utf-8") as handle:
+            for record in records:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    summary = {**aggregate_metrics(scores), "task": args.task, "protocol": args.protocol,
+               "world": args.world, "controller": args.controller,
+               "track": f"high_level_event_agent_{args.inspection}", "min_visible_fraction": .20,
+               "dataset": str(args.tasks), "checkpoint": str(active_checkpoint)}
     (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     return 0

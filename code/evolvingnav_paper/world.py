@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import habitat_sim
 import numpy as np
+import base64
+import io
+import math
+from PIL import Image
 
 from evolvingnav_paper.agent import ViewEvidence
 from evolvingnav_paper.coverage import (
-    camera_forward, camera_transform, candidate_surface_samples, depth_quality,
+    camera_transform, candidate_surface_samples,
     heading_quaternion,
-    visible_sample_ids,
+    visible_sample_ids, view_features,
 )
 from evolvingnav_paper.habitat_utils import set_agent
 from evolvingnav_paper.memory import backproject
@@ -29,18 +33,28 @@ class HabitatAgentWorld:
         self.rotation = list(start_xyzw)
         self.speed_mps = speed_mps
         self.calibrator = calibrator
-        self.category_recall = category_recall
+        self.category_recall = (calibrator.category_recalls.get(getattr(backend, "target_category", ""), category_recall)
+                                if calibrator is not None else category_recall)
         self.frame = 0
         self.private_inspections: list[dict] = []
         self.last_detection = None
+        self.public_observation = {}
+        self.steps = 0
+        self.remaining_time_s = math.inf
+        self.remaining_steps = 500
+        self.active_views = {}
+        self.used_views = {}
+        self.exploration_observation = (False, [])
         surface_points = surface_points or {}
         self.samples = {state: candidate_surface_samples(
             center, place_points=surface_points.get(state))
                         for state, center in state_centers.items()}
         self.frontiers = set(viewpoints) - (known_states or set())
+        self.known_states = set(known_states or viewpoints)
         self.motion_schedule = sorted(motion_schedule or [], key=lambda row: row["time_s"])
         self.world_time_s = 0.0
         self._next_motion = 0
+        self.advance_time(0.)
 
     def advance_time(self, seconds: float) -> None:
         if seconds < 0:
@@ -57,25 +71,50 @@ class HabitatAgentWorld:
     def sample_count(self, state: int) -> int:
         return len(self.samples[state])
 
-    def expected_new_detection(self, state: int, uncovered: float) -> float:
-        center = np.asarray(self.state_centers[state], dtype=float)
-        viewpoint = self.viewpoints[state]
-        distance = float(np.linalg.norm(center - np.asarray(viewpoint["position_xyz"])))
-        direction = center - np.asarray(viewpoint["position_xyz"])
-        angle = max(0.0, float(np.dot(
-            direction / max(distance, 1e-9),
-            camera_forward(viewpoint["rotation_xyzw"]),
-        )))
+    def expected_new_detection(self, state: int, uncovered: float, viewpoint=None) -> float:
+        if uncovered <= 0:
+            return 0.
+        viewpoint = viewpoint or self.viewpoints[state]
         if self.calibrator is None:
             return self.category_recall * uncovered
-        return self.calibrator.predict({
-            "coverage": uncovered,
-            "range_m": distance,
-            "angle_cos": angle,
-            "projected_pixels": int(25 * uncovered),
-            "depth_quality": 1.0,
-            "category_recall": self.category_recall,
-        })
+        features, _ = view_features(self.samples[state], frozenset(range(len(self.samples[state]))),
+            viewpoint["position_xyz"], viewpoint["rotation_xyzw"], np.ones((240, 320)),
+            category=getattr(self.backend, "target_category", ""), category_recall=self.category_recall)
+        features["coverage"] = uncovered
+        features["projected_pixels"] *= uncovered
+        features["image_quality"] = .5
+        return self.calibrator.predict(features)
+
+    def plan_view(self, state: int, covered: frozenset[int], *, round_id: int = 0):
+        from evolvingnav_paper.coverage import _rotation
+        options = []
+        used = self.used_views.setdefault((state, round_id), set())
+        for index, viewpoint in enumerate([self.viewpoints[state], *self.viewpoints[state].get("alternatives", [])]):
+            if index in used:
+                continue
+            transform = camera_transform(viewpoint["position_xyz"], viewpoint["rotation_xyzw"])
+            points = (self.samples[state]-transform[:3, 3]) @ _rotation(viewpoint["rotation_xyzw"])
+            horizontal = np.tan(np.deg2rad(79.)/2)
+            visible = {i for i, (x, y, z) in enumerate(points)
+                       if z < -.05 and abs(x/-z) < horizontal and abs(y/-z) < horizontal*.75}
+            new = len(visible-covered)/len(self.samples[state])
+            distance = self.distance(viewpoint["position_xyz"])
+            if new > .05 and np.isfinite(distance):
+                probability = self.expected_new_detection(state, new, viewpoint)
+                options.append((probability/(distance+.25), viewpoint, probability, index))
+        if not options:
+            return None
+        _, viewpoint, probability, index = max(options, key=lambda row: row[0])
+        self.active_views[state] = viewpoint
+        self.active_views[(state, "round")] = round_id, index
+        return viewpoint["position_xyz"], probability
+
+    def has_frontier(self) -> bool:
+        return bool(self.frontiers)
+
+    def exploration_cost(self) -> float:
+        return min((self.distance(self.viewpoints[state]["position_xyz"])
+                    for state in self.frontiers), default=math.inf)
 
     def move_chunk(self, goal, max_distance: float) -> tuple[float, float]:
         path = habitat_sim.ShortestPath()
@@ -83,7 +122,10 @@ class HabitatAgentWorld:
         path.requested_end = np.asarray(goal, dtype=np.float32)
         if not self.backend.real.pathfinder.find_path(path):
             return 0.0, 0.0
+        max_distance = min(max_distance, self.remaining_time_s*self.speed_mps, self.remaining_steps*.25)
         remaining = min(float(max_distance), float(path.geodesic_distance))
+        if remaining <= 0:
+            return 0., 0.
         points = [np.asarray(point, dtype=float) for point in path.points]
         new_position = points[0]
         for point in points[1:]:
@@ -100,20 +142,28 @@ class HabitatAgentWorld:
         self.position = new_position
         set_agent(self.backend.real.get_agent(0), self.position.tolist(), self.rotation)
         self.advance_time(displacement / self.speed_mps)
+        self.steps += max(1, math.ceil(displacement/.25))
         return displacement, displacement / self.speed_mps
 
     def inspect(self, state: int) -> tuple[bool, list[ViewEvidence]]:
-        viewpoint = self.viewpoints[state]
+        viewpoint = self.active_views.get(state, self.viewpoints[state])
         self.position = np.asarray(viewpoint["position_xyz"], dtype=float)
         self.rotation = viewpoint["rotation_xyzw"]
-        private = self.backend.inspect(state, self.position.tolist())
-        self.private_inspections.append({"state_id": state, **private})
+        round_id, index = self.active_views.get((state, "round"), (0, 0))
+        self.used_views.setdefault((state, round_id), set()).add(index)
+        return self._sense(state)
+
+    def _sense(self, state: int | None = None):
+        private = self.backend.observe(self.position.tolist(), self.rotation)
+        self.private_inspections.append({"state_id": state, "time_s": self.world_time_s,
+                                        "position_xyz": self.position.tolist(),
+                                        "rotation_xyzw": list(self.rotation), **private})
         observation = self.backend.last_observation
         if observation is None:
             raise RuntimeError("Habitat did not produce an RGB-D frame")
         self.last_detection = None
         if self.backend.last_detections:
-            strongest = max(self.backend.last_detections, key=lambda item: item.confidence)
+            detection_index, strongest = max(enumerate(self.backend.last_detections), key=lambda row: row[1].confidence)
             depth = observation["depth"]
             pixels = np.argwhere(strongest.mask & np.isfinite(depth) & (depth > 0))
             if len(pixels):
@@ -124,56 +174,58 @@ class HabitatAgentWorld:
                 intrinsics = np.array([[focal, 0, width / 2],
                                        [0, focal, height / 2], [0, 0, 1]], dtype=float)
                 point = backproject(u, v, depth_m, intrinsics,
-                                    camera_transform(self.position, self.rotation))
+                                    camera_transform(self.position, self.rotation, optical=True))
+                observed_state = min(self.state_centers, key=lambda key: np.linalg.norm(
+                    np.asarray(self.state_centers[key])-point))
                 self.last_detection = {
                     "world_point": point,
                     "confidence": strongest.confidence,
-                    "evidence_id": f"frame-{self.frame + 1}:positive",
+                    "evidence_id": f"frame-{self.frame + 1}:{detection_index}",
+                    "state_id": observed_state,
                 }
+        buffer = io.BytesIO()
+        Image.fromarray(observation["rgb"][..., :3]).save(buffer, format="JPEG")
+        self.public_observation = {
+            "evidence_id": f"frame-{self.frame+1}", "time_s": self.world_time_s,
+            "position_xyz": self.position.tolist(), "rotation_xyzw": list(self.rotation),
+            "image_url": "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode(),
+        }
         return bool(private["detected"]), self._evidence_from_depth(observation["depth"])
 
-    def observe_chunk(self) -> list[ViewEvidence]:
-        if self.backend.detector is None:
-            return []
-        observation = self.backend.real.get_sensor_observations()
-        depth = np.asarray(observation["depth"])
-        covered_any = any(visible_sample_ids(
-            samples, self.position, self.rotation, depth, 79.0
-        ) for samples in self.samples.values())
-        if not covered_any:
-            return []
-        detected = self.backend.detector(
-            np.asarray(observation["rgb"]), depth, self.backend.target_category
-        )
-        return [] if detected else self._evidence_from_depth(depth)
+    def observe_chunk(self):
+        return self._sense()
+
+    def record_memory(self, memory, target_id, timestamp):
+        observation = {**self.backend.last_observation, **self.public_observation,
+                       "timestamp": timestamp}
+        detections = [{"category": item.category, "confidence": item.confidence,
+                       "mask": item.mask} for item in self.backend.last_detections]
+        identities = {}
+        if self.last_detection is not None and target_id is not None:
+            identities[int(self.last_detection["evidence_id"].split(":")[-1])] = target_id
+        memory.ingest(observation, detections, self.state_centers, entity_ids=identities)
 
     def _evidence_from_depth(self, depth: np.ndarray) -> list[ViewEvidence]:
         self.frame += 1
         evidence = []
         for candidate, samples in self.samples.items():
+            if candidate not in self.known_states:
+                continue
             covered = visible_sample_ids(
                 samples, self.position, self.rotation, depth, 79.0
             )
             if covered:
                 fraction = len(covered) / len(samples)
+                features, sample_features = view_features(samples, covered, self.position, self.rotation,
+                    depth, self.backend.last_observation["rgb"],
+                    category=getattr(self.backend, "target_category", ""), category_recall=self.category_recall)
                 if self.calibrator is None:
                     detection_probability = self.category_recall * fraction
                 else:
-                    direction = np.asarray(self.state_centers[candidate]) - self.position
-                    distance = float(np.linalg.norm(direction))
-                    features = {
-                        "coverage": fraction,
-                        "range_m": distance,
-                        "angle_cos": max(0.0, float(np.dot(
-                            direction / max(distance, 1e-9), camera_forward(self.rotation)))),
-                        "projected_pixels": len(covered),
-                        "depth_quality": depth_quality(depth),
-                        "category_recall": self.category_recall,
-                    }
                     detection_probability = self.calibrator.predict(features)
                 evidence.append(ViewEvidence(
                     f"frame-{self.frame}:state-{candidate}", candidate, covered,
-                    detection_probability, fraction, tuple(self.position.tolist()),
+                    detection_probability, fraction, tuple(self.position.tolist()), features, sample_features,
                 ))
         return evidence
 
@@ -183,20 +235,19 @@ class HabitatAgentWorld:
             for state in self.frontiers
         ]
         reachable = [(distance, state) for distance, state in reachable
-                     if np.isfinite(distance) and distance <= budget_m]
+                     if np.isfinite(distance)]
         if not reachable:
             return {}, 0.0, 0.0
         distance, state = min(reachable)
-        self.frontiers.remove(state)
         goal = self.viewpoints[state]["position_xyz"]
-        displacement, duration = self.move_chunk(goal, distance)
+        displacement, duration = self.move_chunk(goal, min(distance, budget_m))
+        if self.distance(goal) > 1e-4:
+            self.exploration_observation = self._sense()
+            return {}, duration, displacement
+        self.frontiers.remove(state)
+        self.known_states.add(state)
         self.rotation = self.viewpoints[state]["rotation_xyzw"]
         set_agent(self.backend.real.get_agent(0), self.position.tolist(), self.rotation)
-        observations = self.backend.real.get_sensor_observations()
-        detected = (
-            bool(self.backend.detector(
-                np.asarray(observations["rgb"]), np.asarray(observations["depth"]),
-                self.backend.target_category,
-            )) if self.backend.detector is not None else False
-        )
+        self.exploration_observation = self._sense(state)
+        detected = self.exploration_observation[0]
         return {state: (goal, 1.0 if detected else 0.5)}, duration, displacement

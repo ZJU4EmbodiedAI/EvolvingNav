@@ -51,11 +51,40 @@ def depth_quality(depth: np.ndarray) -> float:
     return float(np.mean(np.isfinite(values) & (values > 0)))
 
 
-def camera_transform(agent_xyz, agent_xyzw, sensor_height_m: float = 1.35) -> np.ndarray:
+def view_features(samples, covered, position, rotation, depth, rgb=None,
+                  *, category="", category_recall=.8) -> tuple[dict, dict]:
+    transform = camera_transform(position, rotation)
+    rays = np.asarray(samples)-transform[:3, 3]
+    camera = rays @ transform[:3, :3]
+    height, width = depth.shape
+    focal = width/(2*np.tan(np.deg2rad(79.)/2))
+    indices = sorted(covered)
+    lengths = np.linalg.norm(rays, axis=1)
+    cosines = np.maximum(0., rays @ camera_forward(rotation)/np.maximum(lengths, 1e-9))
+    projected = camera[:, :2]*focal/np.maximum(-camera[:, 2:3], .05)
+    in_front = camera[:, 2] < -.05
+    extent = np.ptp(projected[in_front], axis=0) if in_front.any() else np.zeros(2)
+    area_per_sample = float(np.clip(np.prod(np.maximum(extent, 1.)), 0., width*height)/len(samples))
+    quality = depth_quality(depth)
+    feature = {"coverage": len(indices)/len(samples),
+               "range_m": float(np.mean(lengths[indices])) if indices else 0.,
+               "angle_cos": float(np.mean(cosines[indices])) if indices else 0.,
+               "projected_pixels": area_per_sample*len(indices), "depth_quality": quality,
+               "image_quality": float(np.std(np.asarray(rgb)[..., :3])/128.) if rgb is not None else 0.,
+               "category": category, "category_recall": category_recall}
+    per_sample = {index: {"range_m": float(lengths[index]), "angle_cos": float(cosines[index]),
+                          "depth_quality": quality, "projected_pixels": area_per_sample} for index in indices}
+    return feature, per_sample
+
+
+def camera_transform(agent_xyz, agent_xyzw, sensor_height_m: float = 1.35,
+                     *, optical: bool = False) -> np.ndarray:
     rotation = _rotation(agent_xyzw)
     transform = np.eye(4, dtype=float)
     transform[:3, :3] = rotation
     transform[:3, 3] = np.asarray(agent_xyz, dtype=float) + rotation @ [0, sensor_height_m, 0]
+    if optical:
+        transform[:3, :3] = rotation @ np.diag([1., -1., -1.])
     return transform
 
 

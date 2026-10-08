@@ -55,6 +55,7 @@ class EvidenceLedger:
         self.sample_count = sample_count or {}
         self._round = defaultdict(int)
         self._covered: dict[tuple[int, int], set[int]] = defaultdict(set)
+        self._measured: dict[tuple[int, int], set[int]] = defaultdict(set)
         self._used: set[str] = set()
         self._inspected: set[int] = set()
         self._last_round_time: dict[int, float] = {}
@@ -66,17 +67,24 @@ class EvidenceLedger:
         samples = self.sample_count.get(state, 1)
         return len(self._covered[(state, self.round(state))]) / samples
 
+    def covered_samples(self, state: int) -> frozenset[int]:
+        return frozenset(self._covered[(state, self.round(state))])
+
+    def new_samples(self, evidence) -> frozenset[int]:
+        return evidence.surface_samples - self._measured[(evidence.state_id, self.round(evidence.state_id))]
+
     def admit(self, evidence) -> float:
         if evidence.evidence_id in self._used:
             return 0.0
         state = evidence.state_id
         previous = self._covered[(state, self.round(state))]
-        new = set(evidence.surface_samples) - previous
+        new = self.new_samples(evidence)
         fraction = len(new) / self.sample_count.get(state, max(len(new), 1))
+        previous.update(evidence.surface_samples)
         self._used.add(evidence.evidence_id)
         if fraction <= self.min_new_coverage:
             return 0.0
-        previous.update(new)
+        self._measured[(state, self.round(state))].update(new)
         return min(1.0, fraction)
 
     def mark_inspected(self, state: int, now_s: float | None = None) -> None:
@@ -87,7 +95,7 @@ class EvidenceLedger:
     def eligible(self, state: int, *, belief: float, return_probability: float,
                  new_coverage: float, dynamic: bool = True,
                  now_s: float | None = None) -> bool:
-        if state not in self._inspected and self.coverage(state) < self.sufficient_coverage:
+        if self.coverage(state) < self.sufficient_coverage:
             return True
         if new_coverage > self.min_new_coverage:
             return True
