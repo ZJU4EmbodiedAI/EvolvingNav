@@ -36,7 +36,7 @@ footer{background:#112822;border:0;padding:46px 0 42px;color:#a5c1b0;font-size:1
    can peek into the opening viewport without shrinking the hero footage. */
 @media(min-width:761px){
   .demo-gallery{
-    margin-top:-46px;
+    margin-top:-22px;
     z-index:2;
     border-top:1px solid #ffffff24;
     border-radius:18px 18px 0 0;
