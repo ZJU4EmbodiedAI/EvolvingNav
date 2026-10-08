@@ -6,11 +6,6 @@
 
 EvolvingNav is an embodied navigation framework for settings where an agent's remembered scene can become stale while it is away or moving. It forecasts whether an observed state will persist, reasons about plausible relocation, and uses visibility-aware RGB-D evidence to revise its belief and replan.
 
-**Mingjian Gao**<sup>1,*</sup>, **Zhaocheng Li**<sup>1,*</sup>, **Haoyang Huang**<sup>2,*</sup>, **Wenqiao Zhang**<sup>1,‡,†</sup>, **Yingjie NIU**<sup>3,4,‡,†</sup>, **Hao Zhou**<sup>1</sup>, **Chao LI**<sup>3</sup>, **Juncheng LI**<sup>1</sup>, **Siliang Tang**<sup>1</sup>, **Yueting Zhuang**<sup>1</sup>
-
-<sup>1</sup> Zhejiang University · <sup>2</sup> University of California, San Diego · <sup>3</sup> Deeprobotics · <sup>4</sup> The Chinese University of Hong Kong<br />
-<sup>*</sup> Equal contribution · <sup>‡</sup> Corresponding authors · <sup>†</sup> Project lead
-
 ## At a glance
 
 | 54 scenes | 803.68K tasks | 61.32% first-inspection SR | 86.18% search SR |
