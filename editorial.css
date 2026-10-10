@@ -45,3 +45,13 @@ footer{background:#112822;border:0;padding:46px 0 42px;color:#a5c1b0;font-size:1
 @media(max-width:760px){
   .core-loop-grid{padding:20px;gap:22px 18px}
 }
+
+/* Real-world demonstrations share equal frames and preserve every side panel. */
+.realworld-video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.realworld-demo-strip .hssd-video-frame{aspect-ratio:16/9;background:#0b1512}
+.realworld-demo-strip .hssd-video-frame video{object-fit:contain;object-position:center}
+.realworld-demo-strip .hssd-video-label{min-height:48px;font-size:13px}
+@media(max-width:600px){
+  .realworld-video-grid{grid-template-columns:1fr}
+  .realworld-demo-strip .hssd-video-label{min-height:44px;font-size:12px}
+}
